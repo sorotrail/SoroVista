@@ -1,17 +1,17 @@
-// Package source defines EventSource, the single seam between SoroLens's
+// Package source defines EventSource, the single seam between SoroVista's
 // read paths (the JSON API and the web UI) and wherever contract events
 // actually come from.
 //
-// Two implementations ship with SoroLens, selected by SOURCE_MODE:
+// Two implementations ship with SoroVista, selected by SOURCE_MODE:
 //
-//   - rpcsource: standalone mode. SoroLens polls Stellar RPC itself and reads
+//   - rpcsource: standalone mode. SoroVista polls Stellar RPC itself and reads
 //     back from its own Postgres database.
-//   - sorotrailsource: upstream mode. SoroLens reads from a SoroTrail
+//   - sorotrailsource: upstream mode. SoroVista reads from a SoroTrail
 //     indexer's HTTP API and keeps no database, so it can show history the RPC
 //     has already dropped.
 //
 // contributors: to add a new backend, implement EventSource in a new package
-// under internal/source and wire it into the switch in cmd/sorolens. Nothing
+// under internal/source and wire it into the switch in cmd/sorovista. Nothing
 // outside that switch should need to change — the API and web layers only ever
 // see this interface.
 //
@@ -42,7 +42,7 @@ const (
 type Event struct {
 	// ID is the RPC's TOID-based identifier. IDs are zero-padded, so their
 	// lexicographic order matches chronological order — cursor pagination
-	// throughout SoroLens relies on this.
+	// throughout SoroVista relies on this.
 	ID               string `json:"id"`
 	ContractID       string `json:"contract_id"`
 	Ledger           int64  `json:"ledger"`
@@ -63,7 +63,7 @@ type Event struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// Contract summarizes every event SoroLens holds for one contract.
+// Contract summarizes every event SoroVista holds for one contract.
 type Contract struct {
 	ID          string `json:"id"`
 	EventCount  int64  `json:"event_count"`

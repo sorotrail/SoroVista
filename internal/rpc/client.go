@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Client is the Stellar RPC surface SoroLens uses. The ingester depends on
+// Client is the Stellar RPC surface SoroVista uses. The ingester depends on
 // this interface rather than on HTTPClient, so tests can supply a fake node.
 //
 // contributors: adding a method here means adding it to every fake in the

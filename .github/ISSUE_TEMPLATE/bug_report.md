@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in SoroLens behaves wrong
+about: Something in SoroVista behaves wrong
 labels: bug
 ---
 
@@ -20,5 +20,5 @@ What you believed should have happened instead.
 
 **Environment**
 
-- SoroLens version (`/api/version` output if available)
+- SoroVista version (`/api/version` output if available)
 - Browser (for UI issues) or client library (for API issues)

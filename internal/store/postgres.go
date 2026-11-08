@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // Postgres implements Store on a pgx connection pool.

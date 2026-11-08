@@ -2,7 +2,7 @@ package rpc
 
 // NetworkPassphrases are the well-known Stellar network passphrases. A
 // network's passphrase is its identity: two nodes with the same passphrase
-// are the same network. SoroLens verifies at startup — in standalone mode —
+// are the same network. SoroVista verifies at startup — in standalone mode —
 // that the RPC endpoint it polls really belongs to the configured network,
 // because the classic footgun is polling mainnet with testnet expectations
 // and reading it as "the contract has no activity".

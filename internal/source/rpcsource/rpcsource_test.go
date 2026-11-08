@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sorotrail/sorolens/internal/rpc"
-	"github.com/sorotrail/sorolens/internal/source"
-	"github.com/sorotrail/sorolens/internal/store"
+	"github.com/sorotrail/sorovista/internal/rpc"
+	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/store"
 )
 
 // stubStore is a canned store.Store.
@@ -149,7 +149,7 @@ func TestStatus(t *testing.T) {
 		assert.Equal(t, "rpc", st.Mode)
 		assert.True(t, st.Healthy)
 		assert.Equal(t, int64(900), st.LatestLedger)
-		assert.Contains(t, st.RetentionNote, "only while SoroLens is running",
+		assert.Contains(t, st.RetentionNote, "only while SoroVista is running",
 			"the capture-window caveat must always be surfaced")
 	})
 

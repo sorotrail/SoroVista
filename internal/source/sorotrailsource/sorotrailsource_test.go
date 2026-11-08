@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // fakeIndexer is an in-memory stand-in for a SoroTrail instance. It reproduces
@@ -160,7 +160,7 @@ func newTestSource(f *fakeIndexer) *Source {
 
 func TestListEventsReturnsNewestFirst(t *testing.T) {
 	// The upstream API only pages ascending, so this is the core behaviour:
-	// SoroLens must still present the newest events first.
+	// SoroVista must still present the newest events first.
 	f := newFakeIndexer(makeEvents(100, 1000, "CABC"))
 	src := newTestSource(f)
 
@@ -493,7 +493,7 @@ func TestSortDescDeduplicates(t *testing.T) {
 }
 
 // TestHTTPAPIAgainstRealServer exercises the HTTP layer against a stub of
-// SoroTrail's actual response shapes, confirming SoroLens parses what
+// SoroTrail's actual response shapes, confirming SoroVista parses what
 // SoroTrail really returns.
 func TestHTTPAPIAgainstRealServer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

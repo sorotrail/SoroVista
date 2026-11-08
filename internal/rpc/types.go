@@ -1,5 +1,5 @@
 // Package rpc talks to a Stellar RPC node over JSON-RPC 2.0. It is used only
-// in standalone mode, where SoroLens ingests events itself.
+// in standalone mode, where SoroVista ingests events itself.
 package rpc
 
 import (

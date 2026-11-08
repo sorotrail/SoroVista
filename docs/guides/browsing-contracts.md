@@ -1,6 +1,6 @@
 # Browsing contracts
 
-The contracts list is SoroLens's home page — every contract it has event data for, however it's getting that data.
+The contracts list is SoroVista's home page — every contract it has event data for, however it's getting that data.
 
 ## The contracts list
 
@@ -26,8 +26,8 @@ From here you can filter by event type or ledger range — see [Searching and fi
 
 ## Finding a contract you don't have the ID for
 
-If you know roughly what you're looking for but not the exact contract ID, the global search accepts partial matches on contract ID. There's no name-based search in the MVP (SoroLens doesn't resolve contract metadata like token names) — you need the `C...` address. If you're coming from a wallet or another explorer, copy the address from there.
+If you know roughly what you're looking for but not the exact contract ID, the global search accepts partial matches on contract ID. There's no name-based search in the MVP (SoroVista doesn't resolve contract metadata like token names) — you need the `C...` address. If you're coming from a wallet or another explorer, copy the address from there.
 
 ## What "seen" means
 
-A contract only appears in the list once SoroLens has ingested at least one of its events — in standalone mode, that means since SoroLens started running (or since `START_LEDGER`, if you set one); in upstream mode, it means SoroTrail has an event for it. A contract with no events yet, or one SoroLens hasn't been watching, won't appear.
+A contract only appears in the list once SoroVista has ingested at least one of its events — in standalone mode, that means since SoroVista started running (or since `START_LEDGER`, if you set one); in upstream mode, it means SoroTrail has an event for it. A contract with no events yet, or one SoroVista hasn't been watching, won't appear.

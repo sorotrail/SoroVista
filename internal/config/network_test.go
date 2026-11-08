@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sorotrail/sorolens/internal/rpc"
+	"github.com/sorotrail/sorovista/internal/rpc"
 )
 
 func TestParseNetwork(t *testing.T) {

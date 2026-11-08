@@ -1,4 +1,4 @@
-// Package config loads SoroLens configuration from environment variables.
+// Package config loads SoroVista configuration from environment variables.
 package config
 
 import (
@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-// SourceMode selects where SoroLens reads contract events from.
+// SourceMode selects where SoroVista reads contract events from.
 type SourceMode string
 
 const (
-	// ModeRPC is standalone mode: SoroLens polls a Stellar RPC endpoint
+	// ModeRPC is standalone mode: SoroVista polls a Stellar RPC endpoint
 	// itself and stores events in its own Postgres database.
 	ModeRPC SourceMode = "rpc"
-	// ModeSoroTrail is upstream mode: SoroLens reads from a SoroTrail
+	// ModeSoroTrail is upstream mode: SoroVista reads from a SoroTrail
 	// indexer's HTTP API and keeps no database of its own.
 	ModeSoroTrail SourceMode = "sorotrail"
 )
@@ -72,7 +72,7 @@ type Config struct {
 
 	// CORSAllowedOrigins is the allow-list of browser Origins permitted to
 	// call the API cross-origin (CORS_ALLOWED_ORIGINS, comma-separated).
-	// Empty disables CORS: same-origin pages, including SoroLens's own UI,
+	// Empty disables CORS: same-origin pages, including SoroVista's own UI,
 	// never need it.
 	CORSAllowedOrigins []string
 	// HTTPAddr is the listen address for the web UI and JSON API.

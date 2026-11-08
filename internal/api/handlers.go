@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/sorotrail/sorolens/internal/buildinfo"
-	"github.com/sorotrail/sorolens/internal/config"
-	"github.com/sorotrail/sorolens/internal/reqid"
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/buildinfo"
+	"github.com/sorotrail/sorovista/internal/config"
+	"github.com/sorotrail/sorovista/internal/reqid"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // errorResponse is the structured error envelope. "error" carries the

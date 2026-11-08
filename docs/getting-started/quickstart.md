@@ -5,8 +5,8 @@ From zero to browsing contract events in a few minutes. You need Docker with the
 ## 1. Clone and start the stack
 
 ```bash
-git clone https://github.com/sorotrail/SoroLens.git
-cd SoroLens
+git clone https://github.com/sorotrail/SoroVista.git
+cd SoroVista
 cp .env.example .env
 docker compose up -d
 ```
@@ -19,7 +19,7 @@ curl http://localhost:8080/health
 
 ## 2. Open the UI
 
-Visit `http://localhost:8080` in a browser. You'll land on the contracts list — initially empty, filling in as SoroLens ingests testnet activity (give it a minute on an active network).
+Visit `http://localhost:8080` in a browser. You'll land on the contracts list — initially empty, filling in as SoroVista ingests testnet activity (give it a minute on an active network).
 
 ## 3. Browse a contract
 
@@ -41,7 +41,7 @@ curl 'http://localhost:8080/api/events/<event-id>'
 
 ## Want deeper history instead?
 
-Standalone mode only sees what it's ingested since it started, because Stellar RPC retains events briefly. If you run a [SoroTrail](https://github.com/sorotrail/SoroTrail) instance, point SoroLens at it instead for a much deeper archive — see [Operating modes](../concepts/operating-modes.md).
+Standalone mode only sees what it's ingested since it started, because Stellar RPC retains events briefly. If you run a [SoroTrail](https://github.com/sorotrail/SoroTrail) instance, point SoroVista at it instead for a much deeper archive — see [Operating modes](../concepts/operating-modes.md).
 
 ## Next steps
 

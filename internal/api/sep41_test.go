@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 func TestDetectTokenEvent(t *testing.T) {

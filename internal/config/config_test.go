@@ -21,7 +21,7 @@ func TestLoad(t *testing.T) {
 	}{
 		{
 			name: "standalone defaults",
-			env:  map[string]string{"DATABASE_URL": "postgres://localhost/sorolens"},
+			env:  map[string]string{"DATABASE_URL": "postgres://localhost/sorovista"},
 			check: func(t *testing.T, c Config) {
 				assert.Equal(t, ModeRPC, c.SourceMode)
 				assert.Equal(t, DefaultRPCURL, c.RPCURL)
@@ -89,7 +89,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "watched contracts are parsed and trimmed",
 			env: map[string]string{
-				"DATABASE_URL":      "postgres://localhost/sorolens",
+				"DATABASE_URL":      "postgres://localhost/sorovista",
 				"WATCHED_CONTRACTS": " " + validContract + " , " + validContract + " ",
 			},
 			check: func(t *testing.T, c Config) {
@@ -99,7 +99,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "a malformed watched contract is rejected",
 			env: map[string]string{
-				"DATABASE_URL":      "postgres://localhost/sorolens",
+				"DATABASE_URL":      "postgres://localhost/sorovista",
 				"WATCHED_CONTRACTS": "not-a-contract",
 			},
 			wantErr: "invalid contract ID",
@@ -107,7 +107,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "poll interval below the floor is rejected",
 			env: map[string]string{
-				"DATABASE_URL":  "postgres://localhost/sorolens",
+				"DATABASE_URL":  "postgres://localhost/sorovista",
 				"POLL_INTERVAL": "100ms",
 			},
 			wantErr: "below the 1s minimum",
@@ -115,7 +115,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "poll interval is parsed",
 			env: map[string]string{
-				"DATABASE_URL":  "postgres://localhost/sorolens",
+				"DATABASE_URL":  "postgres://localhost/sorovista",
 				"POLL_INTERVAL": "30s",
 			},
 			check: func(t *testing.T, c Config) {
@@ -125,7 +125,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "log level is parsed",
 			env: map[string]string{
-				"DATABASE_URL": "postgres://localhost/sorolens",
+				"DATABASE_URL": "postgres://localhost/sorovista",
 				"LOG_LEVEL":    "debug",
 			},
 			check: func(t *testing.T, c Config) {
@@ -135,7 +135,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "invalid log level is rejected",
 			env: map[string]string{
-				"DATABASE_URL": "postgres://localhost/sorolens",
+				"DATABASE_URL": "postgres://localhost/sorovista",
 				"LOG_LEVEL":    "verbose",
 			},
 			wantErr: "invalid LOG_LEVEL",
@@ -143,7 +143,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "start ledger must be positive",
 			env: map[string]string{
-				"DATABASE_URL": "postgres://localhost/sorolens",
+				"DATABASE_URL": "postgres://localhost/sorovista",
 				"START_LEDGER": "0",
 			},
 			wantErr: "invalid START_LEDGER",
@@ -151,7 +151,7 @@ func TestLoad(t *testing.T) {
 		{
 			name: "start and retention ledgers are parsed",
 			env: map[string]string{
-				"DATABASE_URL":      "postgres://localhost/sorolens",
+				"DATABASE_URL":      "postgres://localhost/sorovista",
 				"START_LEDGER":      "500",
 				"RETENTION_LEDGERS": "1000",
 			},

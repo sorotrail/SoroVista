@@ -7,7 +7,7 @@ import (
 
 // CORSConfig controls the CORS middleware. Origins is the allow-list of
 // Origins permitted to call the API from a browser; an empty list disables
-// CORS entirely — same-origin pages (SoroLens's own UI) never need it.
+// CORS entirely — same-origin pages (SoroVista's own UI) never need it.
 type CORSConfig struct {
 	Origins []string
 }

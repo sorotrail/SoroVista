@@ -1,4 +1,4 @@
-// Command sorolens serves the contract explorer: a web UI and a read-only
+// Command sorovista serves the contract explorer: a web UI and a read-only
 // JSON API over decoded Soroban contract events.
 //
 // It runs in one of two modes, selected by SOURCE_MODE:
@@ -22,18 +22,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/sorotrail/sorolens/internal/api"
-	"github.com/sorotrail/sorolens/internal/config"
-	"github.com/sorotrail/sorolens/internal/decode"
-	"github.com/sorotrail/sorolens/internal/ingest"
-	"github.com/sorotrail/sorolens/internal/metrics"
-	"github.com/sorotrail/sorolens/internal/reqid"
-	"github.com/sorotrail/sorolens/internal/rpc"
-	"github.com/sorotrail/sorolens/internal/source"
-	"github.com/sorotrail/sorolens/internal/source/rpcsource"
-	"github.com/sorotrail/sorolens/internal/source/sorotrailsource"
-	"github.com/sorotrail/sorolens/internal/store"
-	"github.com/sorotrail/sorolens/internal/web"
+	"github.com/sorotrail/sorovista/internal/api"
+	"github.com/sorotrail/sorovista/internal/config"
+	"github.com/sorotrail/sorovista/internal/decode"
+	"github.com/sorotrail/sorovista/internal/ingest"
+	"github.com/sorotrail/sorovista/internal/metrics"
+	"github.com/sorotrail/sorovista/internal/reqid"
+	"github.com/sorotrail/sorovista/internal/rpc"
+	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/source/rpcsource"
+	"github.com/sorotrail/sorovista/internal/source/sorotrailsource"
+	"github.com/sorotrail/sorovista/internal/store"
+	"github.com/sorotrail/sorovista/internal/web"
 )
 
 // shutdownTimeout bounds how long in-flight requests may finish after a signal.
@@ -43,7 +43,7 @@ func main() {
 	if err := run(); err != nil {
 		// The logger may not exist yet if configuration failed, so report the
 		// startup failure on stderr unconditionally.
-		fmt.Fprintf(os.Stderr, "sorolens: %v\n", err)
+		fmt.Fprintf(os.Stderr, "sorovista: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -69,7 +69,7 @@ func run() error {
 	}
 	defer cleanup()
 
-	log.Info("starting sorolens",
+	log.Info("starting sorovista",
 		"mode", cfg.SourceMode,
 		"http_addr", cfg.HTTPAddr)
 
@@ -119,7 +119,7 @@ func run() error {
 	}
 
 	wg.Wait()
-	log.Info("sorolens stopped")
+	log.Info("sorovista stopped")
 	return nil
 }
 
@@ -210,7 +210,7 @@ func router(src source.EventSource, log *slog.Logger, m *metrics.Metrics, corsOr
 	}
 	r.Use(m.Middleware)
 
-	// /metrics is unauthenticated like the rest of SoroLens's read surface:
+	// /metrics is unauthenticated like the rest of SoroVista's read surface:
 	// it exposes route timings and ingest counters, no event data.
 	r.Handle("/metrics", m.Handler())
 	r.Get("/health", apiServer.HealthHandler())

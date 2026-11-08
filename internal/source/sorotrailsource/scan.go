@@ -7,11 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // Tuning for the backwards scan. SoroTrail returns events ascending, so to
-// show the newest first SoroLens reads a window of ledgers ending at the tip,
+// show the newest first SoroVista reads a window of ledgers ending at the tip,
 // then walks the window backwards. These bounds keep one page view to a
 // predictable, small number of upstream requests.
 const (

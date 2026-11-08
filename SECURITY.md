@@ -1,6 +1,6 @@
 # Security policy
 
-SoroLens is a read-only explorer over public chain data. Its attack
+SoroVista is a read-only explorer over public chain data. Its attack
 surface is correspondingly small, but not zero: it talks to a Postgres
 database and a Stellar RPC endpoint (or a SoroTrail indexer), and serves
 an unauthenticated HTTP API.
@@ -28,11 +28,11 @@ Out of scope:
 - Deployments that expose the API to untrusted networks without their
   own access control — the README is explicit that the API is
   unauthenticated by design
-- Vulnerabilities in dependencies, unless triggerable through SoroLens
+- Vulnerabilities in dependencies, unless triggerable through SoroVista
   in a way a patch here would fix
 
 ## Hardening notes for operators
 
-- Run SoroLens on a trusted network or behind a reverse proxy with auth.
+- Run SoroVista on a trusted network or behind a reverse proxy with auth.
 - The API never mutates state; the worst a request can do is read
   chain-public data or waste resources. Rate-limit at the proxy.

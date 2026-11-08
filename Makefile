@@ -5,10 +5,10 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 build:
-	go build -ldflags "-X github.com/sorotrail/sorolens/internal/buildinfo.Version=$(VERSION) -X github.com/sorotrail/sorolens/internal/buildinfo.Commit=$(COMMIT) -X github.com/sorotrail/sorolens/internal/buildinfo.Date=$(DATE)" -o bin/sorolens ./cmd/sorolens
+	go build -ldflags "-X github.com/sorotrail/sorovista/internal/buildinfo.Version=$(VERSION) -X github.com/sorotrail/sorovista/internal/buildinfo.Commit=$(COMMIT) -X github.com/sorotrail/sorovista/internal/buildinfo.Date=$(DATE)" -o bin/sorovista ./cmd/sorovista
 
 run: build
-	./bin/sorolens
+	./bin/sorovista
 
 test:
 	go test ./...
@@ -16,7 +16,7 @@ test:
 # Run every test including the Postgres integration tests, against the
 # docker-compose database (make up first, or point at your own Postgres).
 test-db:
-	TEST_DATABASE_URL=$${TEST_DATABASE_URL:-postgres://sorolens:sorolens@localhost:5432/sorolens?sslmode=disable} go test ./...
+	TEST_DATABASE_URL=$${TEST_DATABASE_URL:-postgres://sorovista:sorovista@localhost:5432/sorovista?sslmode=disable} go test ./...
 
 lint:
 	golangci-lint run

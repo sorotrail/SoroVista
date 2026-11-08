@@ -1,5 +1,5 @@
 // Package rpcsource implements source.EventSource for standalone mode, where
-// SoroLens polls Stellar RPC itself and serves events back out of its own
+// SoroVista polls Stellar RPC itself and serves events back out of its own
 // Postgres database.
 //
 // The read path here is deliberately thin: it forwards to the store, which
@@ -11,16 +11,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sorotrail/sorolens/internal/rpc"
-	"github.com/sorotrail/sorolens/internal/source"
-	"github.com/sorotrail/sorolens/internal/store"
+	"github.com/sorotrail/sorovista/internal/rpc"
+	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/store"
 )
 
 // RetentionNote explains standalone mode's central limitation. Stellar RPC
 // keeps contract events for roughly 24 hours to 7 days, so an instance can
 // only ever capture what was emitted while it was running. The UI shows this
 // so nobody mistakes an empty explorer for a broken one.
-const RetentionNote = "Standalone mode captures events only while SoroLens is running: " +
+const RetentionNote = "Standalone mode captures events only while SoroVista is running: " +
 	"Stellar RPC retains contract events for about 24 hours to 7 days, so history " +
 	"from before this instance started is not available. Point SOURCE_MODE at a " +
 	"SoroTrail indexer to browse deeper history."

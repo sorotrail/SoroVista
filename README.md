@@ -1,52 +1,52 @@
-# SoroLens
+# SoroVista
 
 A contract explorer and event-data UI for the Stellar/Soroban network.
 
 Stellar's existing explorers show transactions and payments well. What they do
 not show well is **decoded Soroban contract event data** — what a contract
 actually emitted, with human-readable topics and values, browsable and
-filterable. SoroLens is a focused, self-hostable explorer for exactly that.
+filterable. SoroVista is a focused, self-hostable explorer for exactly that.
 
 Point it at a network, and browse contracts, inspect their decoded events, and
 filter across them in a small server-rendered web UI. Everything the UI shows is
-also available as JSON, so SoroLens doubles as a queryable API.
+also available as JSON, so SoroVista doubles as a queryable API.
 
 ```
                     ┌──────────────┐
  Stellar RPC ──────▶│              │
- (standalone)       │  SoroLens   │──▶ web UI + JSON API
+ (standalone)       │  SoroVista   │──▶ web UI + JSON API
  SoroTrail API ────▶│              │
  (upstream)         └──────────────┘
 ```
 
 ## Two operating modes
 
-SoroLens reads events through a single `EventSource` interface with two
+SoroVista reads events through a single `EventSource` interface with two
 implementations, selected by `SOURCE_MODE`. Everything above that interface —
 the web UI and the whole JSON API — behaves identically either way.
 
 ### Standalone mode (`SOURCE_MODE=rpc`)
 
-SoroLens polls Stellar RPC's `getEvents` itself and stores what it finds in its
+SoroVista polls Stellar RPC's `getEvents` itself and stores what it finds in its
 own Postgres database. Self-contained: all you need is an RPC endpoint.
 
 The catch is retention. **Stellar RPC only keeps contract events for roughly 24
 hours to 7 days**, so a standalone instance can only ever capture events emitted
 while it was running. History from before you started it is simply not
-available. SoroLens says so in a banner on every page rather than looking like
+available. SoroVista says so in a banner on every page rather than looking like
 a broken explorer.
 
 ### Upstream mode (`SOURCE_MODE=sorotrail`)
 
-SoroLens reads from an existing [SoroTrail](https://github.com/sorotrail/SoroTrail)
+SoroVista reads from an existing [SoroTrail](https://github.com/sorotrail/SoroTrail)
 indexer's HTTP API instead of polling the RPC. SoroTrail stores events durably,
 so this mode reaches back as far as that indexer has been running — well beyond
 the RPC's own window. No database of its own, no ingestion, no migrations.
 
-Two things are worth knowing about this mode, because SoroLens works around
+Two things are worth knowing about this mode, because SoroVista works around
 them rather than hiding them:
 
-- **SoroTrail paginates ascending by event ID only.** SoroLens shows newest
+- **SoroTrail paginates ascending by event ID only.** SoroVista shows newest
   first, so it walks ledger windows backwards and reverses locally, narrowing
   the window when a range turns out to be dense. A page view normally costs two
   to four upstream requests.
@@ -67,7 +67,7 @@ descending-order parameter and a `GET /contracts` endpoint. See
 docker compose up --build
 ```
 
-This starts Postgres and SoroLens against the public Stellar testnet. The UI is
+This starts Postgres and SoroVista against the public Stellar testnet. The UI is
 on <http://localhost:8080>; watch the logs to see events arrive. Migrations run
 automatically at startup.
 
@@ -107,7 +107,7 @@ SOURCE_MODE=sorotrail SOROTRAIL_URL=http://your-sorotrail:8080 docker compose up
 ## Configuration
 
 All configuration comes from environment variables (see `.env.example`).
-SoroLens validates the variables its selected mode requires and fails at
+SoroVista validates the variables its selected mode requires and fails at
 startup with a message naming both, rather than failing later on a request.
 
 | Variable | Default | Mode | Description |
@@ -126,7 +126,7 @@ startup with a message naming both, rather than failing later on a request.
 | `RETENTION_LEDGERS` | `17280` | standalone | Cold-start reach-back in ledgers (~24h at 5s/ledger). |
 | `SOROTRAIL_URL` | — (**required**) | upstream | Base URL of a SoroTrail indexer. |
 
-Watching more than 25 contracts is supported; SoroLens batches them across
+Watching more than 25 contracts is supported; SoroVista batches them across
 requests to respect the RPC's caps of 5 filters per request and 5 contract IDs
 per filter.
 
@@ -136,7 +136,7 @@ per filter.
 
 ## Networks
 
-A Stellar network's passphrase is its identity. `NETWORK` selects a preset — `testnet`, `mainnet` or `futurenet`, each carrying its public RPC endpoint and passphrase; `NETWORK=custom` takes `RPC_URL` + `NETWORK_PASSPHRASE` for private standalone networks. At startup SoroLens asks the RPC which network it belongs to and **refuses to start on a mismatch**, so a mainnet endpoint behind testnet configuration fails fast instead of quietly showing the wrong chain's activity as if the watched contracts simply had none.
+A Stellar network's passphrase is its identity. `NETWORK` selects a preset — `testnet`, `mainnet` or `futurenet`, each carrying its public RPC endpoint and passphrase; `NETWORK=custom` takes `RPC_URL` + `NETWORK_PASSPHRASE` for private standalone networks. At startup SoroVista asks the RPC which network it belongs to and **refuses to start on a mismatch**, so a mainnet endpoint behind testnet configuration fails fast instead of quietly showing the wrong chain's activity as if the watched contracts simply had none.
 
 ## Web UI
 
@@ -171,7 +171,7 @@ curl -s localhost:8080/health
   "mode": "rpc",
   "healthy": true,
   "latest_ledger": 3947332,
-  "retention_note": "Standalone mode captures events only while SoroLens is running: …"
+  "retention_note": "Standalone mode captures events only while SoroVista is running: …"
 }
 ```
 
@@ -287,7 +287,7 @@ scan — the totals themselves still come straight from SoroTrail.
 ## How events are decoded
 
 Contract events carry topics and a value as Soroban `ScVal`s. When the RPC node
-supports `xdrFormat: "json"`, SoroLens asks for that and stores what it gets.
+supports `xdrFormat: "json"`, SoroVista asks for that and stores what it gets.
 Against older nodes it falls back to base64 XDR and decodes locally through
 `github.com/stellar/go-stellar-sdk/xdr` — the fallback latches after one attempt,
 so only the first request pays for it.
@@ -316,7 +316,7 @@ once written, so re-reading a ledger range is a no-op rather than a rewrite.
 ## Development
 
 ```sh
-make build     # compile to bin/sorolens
+make build     # compile to bin/sorovista
 make test      # unit tests; the Postgres tests skip without a database
 make test-db   # everything, against the docker-compose Postgres
 make lint      # golangci-lint
@@ -336,11 +336,11 @@ pages go here._
 Three tools over the same Soroban event data, each useful on its own:
 
 - **[SoroTrail](https://github.com/sorotrail/SoroTrail)** — indexes contract
-  events durably, past the RPC's retention window. SoroLens reads from it in
+  events durably, past the RPC's retention window. SoroVista reads from it in
   upstream mode.
 - **SoroBeacon** — monitors contract events and sends alerts when they match a
   rule.
-- **SoroLens** (this repo) — browses and explores the events, decoded.
+- **SoroVista** (this repo) — browses and explores the events, decoded.
 
 ## License
 

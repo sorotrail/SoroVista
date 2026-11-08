@@ -3,10 +3,10 @@
 //
 // SoroTrail stores events durably, so upstream mode can show history the RPC
 // has already dropped. Two differences between SoroTrail's API and what
-// SoroLens's UI needs shape this package, and both are worked around here
+// SoroVista's UI needs shape this package, and both are worked around here
 // rather than hidden:
 //
-//  1. SoroTrail paginates ascending by event ID only. SoroLens shows newest
+//  1. SoroTrail paginates ascending by event ID only. SoroVista shows newest
 //     first, so scan.go walks ledger windows backwards and reverses locally.
 //  2. SoroTrail has no contracts endpoint. The contracts list is therefore
 //     derived from a bounded scan of recent events and reported as
@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // DefaultTimeout bounds a single call to the SoroTrail API.

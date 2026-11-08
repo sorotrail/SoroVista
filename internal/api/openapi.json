@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "SoroLens API",
+    "title": "SoroVista API",
     "description": "Read-only JSON API for exploring Soroban contract events, mirroring the web UI. All endpoints are under /api. The root tree also serves /health (combined health, 200/503), /livez (liveness probe, always 200), /readyz (readiness probe, 200/503 per the event source's health), and /metrics (Prometheus text format), which live outside this spec's /api base path.",
     "version": "1.0.0",
     "license": {

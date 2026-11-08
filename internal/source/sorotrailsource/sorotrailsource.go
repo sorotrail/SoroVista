@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // RetentionNote explains what upstream mode can see. Coverage is whatever the

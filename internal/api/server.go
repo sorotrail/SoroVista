@@ -1,4 +1,4 @@
-// Package api serves SoroLens's read-only JSON API. Every endpoint mirrors
+// Package api serves SoroVista's read-only JSON API. Every endpoint mirrors
 // something the web UI shows, so anything browsable is also machine-readable.
 //
 // The API depends only on source.EventSource, so it behaves identically in
@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // Server holds the API's dependencies.
@@ -27,7 +27,7 @@ func New(src source.EventSource, log *slog.Logger) *Server {
 	return &Server{src: src, log: log}
 }
 
-// Routes returns the API router. cmd/sorolens mounts it at /api, except for
+// Routes returns the API router. cmd/sorovista mounts it at /api, except for
 // /health which is mounted at the root.
 //
 // contributors: new read endpoints go here. Anything that mutates state needs

@@ -36,4 +36,4 @@ This is useful for pulling a filtered event set into your own tooling rather tha
 2. Filter type to `contract`, topic to `transfer`.
 3. Narrow the ledger range if you know roughly when it happened.
 4. Click into the specific event for the full decoded payload and transaction hash.
-5. Follow the transaction hash to a general Stellar explorer if you need the broader transaction context (SoroLens focuses on contract events, not full transaction detail).
+5. Follow the transaction hash to a general Stellar explorer if you need the broader transaction context (SoroVista focuses on contract events, not full transaction detail).

@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // SEP-41 is Stellar's token contract interface. A token implementing it

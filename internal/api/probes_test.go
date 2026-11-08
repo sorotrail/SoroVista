@@ -8,14 +8,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// probeServer mirrors cmd/sorolens: the probes live at the root, outside
+// probeServer mirrors cmd/sorovista: the probes live at the root, outside
 // the /api tree that Routes() returns.
 func probeServer(status source.Status) http.Handler {
 	s := New(&fakeSource{status: status}, discardLogger())

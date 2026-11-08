@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Title}} · SoroLens</title>
+  <title>{{.Title}} · SoroVista</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.ico">
   <script src="https://unpkg.com/htmx.org@1.9.12" crossorigin="anonymous"></script>
   <style>
@@ -61,7 +61,7 @@
 </head>
 <body>
 <header>
-  <span class="brand">🔭 SoroLens</span>
+  <span class="brand">🔭 SoroVista</span>
   <a href="/" {{if eq .Active "overview"}}class="active"{{end}}>Overview</a>
   <a href="/contracts" {{if eq .Active "contracts"}}class="active"{{end}}>Contracts</a>
   <form action="/search" method="get" role="search">

@@ -2,7 +2,7 @@
 --
 -- id is the RPC's TOID-based event identifier. It is zero-padded, so ordering
 -- by id lexicographically is the same as ordering chronologically; every
--- cursor in SoroLens relies on that property.
+-- cursor in SoroVista relies on that property.
 CREATE TABLE IF NOT EXISTS events (
     id                 TEXT PRIMARY KEY,
     contract_id        TEXT        NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS events (
     topics             JSONB       NOT NULL DEFAULT '[]'::jsonb,
     value              JSONB       NOT NULL DEFAULT 'null'::jsonb,
     -- On-chain close time of the event's ledger, as distinct from created_at
-    -- below, which is when SoroLens happened to ingest it.
+    -- below, which is when SoroVista happened to ingest it.
     ledger_closed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -7,7 +7,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 // Paging bounds for store queries, mirroring the source package so a limit
@@ -29,7 +29,7 @@ type IngestState struct {
 // EventSource depend on this interface, never on Postgres directly.
 //
 // contributors: an alternative backend (SQLite for single-binary deploys, say)
-// only needs to implement this interface and be wired into cmd/sorolens.
+// only needs to implement this interface and be wired into cmd/sorovista.
 type Store interface {
 	// UpsertEvents inserts events idempotently, keyed on ID, and returns how
 	// many rows were newly inserted. Re-reading a ledger range must never

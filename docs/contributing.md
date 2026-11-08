@@ -1,6 +1,6 @@
 # Contributing
 
-SoroLens is built to be extended — its interfaces exist so new capabilities are small, self-contained contributions. The project participates in **Drips Wave**, where merged PRs on tagged issues earn points that convert to rewards from a shared pool.
+SoroVista is built to be extended — its interfaces exist so new capabilities are small, self-contained contributions. The project participates in **Drips Wave**, where merged PRs on tagged issues earn points that convert to rewards from a shared pool.
 
 ## Where contributions land
 
@@ -16,7 +16,7 @@ Beyond these: observability (metrics for standalone-mode ingestion health), depl
 
 ## How to contribute
 
-1. Pick an open issue from the [issue tracker](https://github.com/sorotrail/SoroLens/issues) — each carries context, requirements, suggested execution, and an explicit definition of done.
+1. Pick an open issue from the [issue tracker](https://github.com/sorotrail/SoroVista/issues) — each carries context, requirements, suggested execution, and an explicit definition of done.
 2. **Get assigned before starting.** Comment on the issue and wait for maintainer assignment.
 3. Fork, branch (`feature/<short-name>`), build.
 4. Meet the issue's definition of done, including tests. `go build ./...` and `go test ./...` must pass.

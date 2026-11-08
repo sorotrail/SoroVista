@@ -1,4 +1,4 @@
-// Package web serves SoroLens's server-rendered explorer.
+// Package web serves SoroVista's server-rendered explorer.
 //
 // Pages are plain html/template output with htmx used for the parts that
 // benefit from it — filtering and paging an event list without reloading the
@@ -20,10 +20,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/sorotrail/sorolens/internal/api"
-	"github.com/sorotrail/sorolens/internal/config"
-	"github.com/sorotrail/sorolens/internal/decode"
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/api"
+	"github.com/sorotrail/sorovista/internal/config"
+	"github.com/sorotrail/sorovista/internal/decode"
+	"github.com/sorotrail/sorovista/internal/source"
 )
 
 //go:embed templates/*.html
@@ -67,7 +67,7 @@ func New(src source.EventSource, log *slog.Logger) (*Server, error) {
 	return s, nil
 }
 
-// Routes returns the UI router, mounted at / by cmd/sorolens.
+// Routes returns the UI router, mounted at / by cmd/sorovista.
 //
 // contributors: new pages go here. Keep them server-rendered; the moment a
 // page needs a build step it stops being editable by everyone.

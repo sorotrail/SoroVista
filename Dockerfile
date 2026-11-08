@@ -9,12 +9,12 @@ ARG VERSION=dev
 ARG COMMIT=none
 ARG DATE=unknown
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-X github.com/sorotrail/sorolens/internal/buildinfo.Version=${VERSION} -X github.com/sorotrail/sorolens/internal/buildinfo.Commit=${COMMIT} -X github.com/sorotrail/sorolens/internal/buildinfo.Date=${DATE}" \
-    -o /out/sorolens ./cmd/sorolens
+    -ldflags "-X github.com/sorotrail/sorovista/internal/buildinfo.Version=${VERSION} -X github.com/sorotrail/sorovista/internal/buildinfo.Commit=${COMMIT} -X github.com/sorotrail/sorovista/internal/buildinfo.Date=${DATE}" \
+    -o /out/sorovista ./cmd/sorovista
 
 FROM alpine:3.20
-RUN adduser -D -H sorolens && apk add --no-cache ca-certificates
-USER sorolens
-COPY --from=build /out/sorolens /usr/local/bin/sorolens
+RUN adduser -D -H sorovista && apk add --no-cache ca-certificates
+USER sorovista
+COPY --from=build /out/sorovista /usr/local/bin/sorovista
 EXPOSE 8080
-ENTRYPOINT ["sorolens"]
+ENTRYPOINT ["sorovista"]

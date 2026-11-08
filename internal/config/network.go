@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sorotrail/sorolens/internal/rpc"
+	"github.com/sorotrail/sorovista/internal/rpc"
 )
 
 // Network describes one Stellar network: the passphrase that identifies it

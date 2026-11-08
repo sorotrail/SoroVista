@@ -3,9 +3,9 @@
 // flags. Release builds set all three:
 //
 //	go build -ldflags "\
-//	  -X github.com/sorotrail/sorolens/internal/buildinfo.Version=v1.2.3 \
-//	  -X github.com/sorotrail/sorolens/internal/buildinfo.Commit=$(git rev-parse --short HEAD) \
-//	  -X github.com/sorotrail/sorolens/internal/buildinfo.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+//	  -X github.com/sorotrail/sorovista/internal/buildinfo.Version=v1.2.3 \
+//	  -X github.com/sorotrail/sorovista/internal/buildinfo.Commit=$(git rev-parse --short HEAD) \
+//	  -X github.com/sorotrail/sorovista/internal/buildinfo.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 package buildinfo
 
 // Version is the release tag, e.g. v1.2.3.

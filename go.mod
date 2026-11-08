@@ -1,4 +1,4 @@
-module github.com/sorotrail/sorolens
+module github.com/sorotrail/sorovista
 
 go 1.25.0
 

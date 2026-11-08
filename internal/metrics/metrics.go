@@ -1,4 +1,4 @@
-// Package metrics holds SoroLens's Prometheus instrumentation.
+// Package metrics holds SoroVista's Prometheus instrumentation.
 //
 // Every method is safe on a nil *Metrics, so call sites can hold the
 // pointer without nil checks and tests can pass nil. A nil Metrics records
@@ -35,33 +35,33 @@ func New() *Metrics {
 		registry: prometheus.NewRegistry(),
 
 		pollsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "sorolens_polls_total",
+			Name: "sorovista_polls_total",
 			Help: "Ingest polls, by outcome (ok|error). Standalone mode only.",
 		}, []string{"outcome"}),
 
 		pollDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "sorolens_poll_duration_seconds",
+			Name:    "sorovista_poll_duration_seconds",
 			Help:    "Wall-clock duration of a single ingest poll cycle.",
 			Buckets: prometheus.DefBuckets,
 		}),
 
 		pollLag: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "sorolens_ingest_lag_ledgers",
+			Name: "sorovista_ingest_lag_ledgers",
 			Help: "How far the stored resume point trails the chain tip, in ledgers.",
 		}),
 
 		eventsIngested: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "sorolens_events_ingested_total",
+			Name: "sorovista_events_ingested_total",
 			Help: "Contract events ingested from the RPC and stored. Standalone mode only.",
 		}),
 
 		sincePollSec: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "sorolens_seconds_since_last_poll",
+			Name: "sorovista_seconds_since_last_poll",
 			Help: "Seconds since the ingester last completed a cycle. Grows without bound when polling has stopped.",
 		}),
 
 		httpDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "sorolens_http_request_duration_seconds",
+			Name:    "sorovista_http_request_duration_seconds",
 			Help:    "HTTP request duration by route pattern, method and status.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"route", "method", "status"}),
@@ -150,5 +150,5 @@ func (m *Metrics) Middleware(next http.Handler) http.Handler {
 
 // RoutePattern extracts the matched route pattern from the request
 // context. It is a function variable so this package does not import chi;
-// cmd/sorolens wires it to chi's route context.
+// cmd/sorovista wires it to chi's route context.
 var RoutePattern func(*http.Request) string

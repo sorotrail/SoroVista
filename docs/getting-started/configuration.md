@@ -15,7 +15,7 @@ All configuration is via environment variables. With Docker Compose, set them in
 | `HTTP_ADDR` | `:8080` | Listen address for the UI and API. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 
-SoroLens validates configuration at startup: if `SOURCE_MODE=rpc` but `DATABASE_URL` is missing, or `SOURCE_MODE=sorotrail` but `SOROTRAIL_URL` is missing, it fails fast with a clear message rather than starting in a broken state.
+SoroVista validates configuration at startup: if `SOURCE_MODE=rpc` but `DATABASE_URL` is missing, or `SOURCE_MODE=sorotrail` but `SOROTRAIL_URL` is missing, it fails fast with a clear message rather than starting in a broken state.
 
 ## Choosing a mode
 

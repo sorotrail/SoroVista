@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/sorotrail/sorolens/internal/source"
+	"github.com/sorotrail/sorovista/internal/source"
 
 	"github.com/stellar/go-stellar-sdk/strkey"
 )
