@@ -200,14 +200,14 @@ func router(src source.EventSource, log *slog.Logger, m *metrics.Metrics, corsOr
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, reqid.Middleware, requestLogger(log))
 	r.Use(api.CORSMiddleware(api.CORSConfig{Origins: corsOrigins}))
-	// RoutePattern returns the matched chi pattern (e.g. "/api/events/{id}"),
+	// WithRoutePattern resolves the matched chi pattern (e.g. "/api/events/{id}"),
 	// not the raw path, keeping metric label cardinality bounded.
-	metrics.RoutePattern = func(req *http.Request) string {
+	m.WithRoutePattern(func(req *http.Request) string {
 		if rc := chi.RouteContext(req.Context()); rc != nil {
 			return rc.RoutePattern()
 		}
 		return ""
-	}
+	})
 	r.Use(m.Middleware)
 
 	// /metrics is unauthenticated like the rest of SoroVista's read surface:
