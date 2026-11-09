@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -209,4 +210,34 @@ func TestContextCancellationIsRespected(t *testing.T) {
 	_, err := client.GetHealth(ctx)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestTruncateCutsOnRuneBoundaries(t *testing.T) {
+	const (
+		japanese = "日本語でイベントを発行しています"
+		emojis   = "🚀🌟🎉🔥💎"
+	)
+
+	tests := []struct {
+		name     string
+		in       string
+		maxBytes int
+		want     string
+	}{
+		{"ascii under limit", "bad gateway", 256, "bad gateway"},
+		{"ascii over limit", "bad gateway", 3, "bad…"},
+		{"japanese cut at 4 bytes keeps 1 whole 3-byte rune", japanese, 4, "日…"},
+		{"japanese cut at 7 bytes keeps 2 whole 3-byte runes", japanese, 7, "日本…"},
+		{"japanese cut at 10 bytes keeps 3 whole 3-byte runes", japanese, 10, "日本語…"},
+		{"4-byte emoji cut at 6 bytes keeps 1 emoji", emojis, 6, "🚀…"},
+		{"4-byte emoji cut at 3 bytes drops incomplete rune", emojis, 3, "…"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncate(tt.in, tt.maxBytes)
+			assert.True(t, utf8.ValidString(got), "truncate(%q, %d) produced invalid UTF-8: %q", tt.in, tt.maxBytes, got)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

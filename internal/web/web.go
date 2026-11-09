@@ -187,21 +187,16 @@ func templateFuncs() template.FuncMap {
 		"renderTopics": decode.RenderTopics,
 		// eventName is the conventional first-topic symbol, or "" if absent.
 		"eventName": decode.EventName,
-		// shorten abbreviates long identifiers for table cells.
+		// shorten abbreviates long identifiers to keepRunes head and tail runes
+		// for table cells.
 		"shorten": decode.Shorten,
-		// summary renders a value, truncated for a single table cell.
-		"summary": func(raw any, limit int) string {
-			var text string
-			switch v := raw.(type) {
-			case string:
-				text = v
-			default:
-				text = fmt.Sprint(v)
+		// summary renders a value, truncated to maxRunes runes for a single
+		// table cell.
+		"summary": func(raw any, maxRunes int) string {
+			if s, ok := raw.(string); ok {
+				return decode.Truncate(s, maxRunes)
 			}
-			if len(text) <= limit {
-				return text
-			}
-			return text[:limit] + "…"
+			return decode.Truncate(fmt.Sprint(raw), maxRunes)
 		},
 		// join concatenates strings with a separator.
 		"join": strings.Join,

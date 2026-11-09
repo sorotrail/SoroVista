@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -407,4 +408,25 @@ func TestNavNotHighlightedOnEventOrErrorPages(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSummaryTruncatesOnRuneBoundaries(t *testing.T) {
+	// partials.html passes topics through summary at 28 runes and event values
+	// at 48 runes. Multi-byte UTF-8 symbols or strings must be cut on rune
+	// boundaries rather than mangled into U+FFFD replacement characters.
+	e := sampleEvent()
+	e.Topics = json.RawMessage(`[{"symbol":"日本語でスマートコントラクトのイベントを発行しています🚀🌟🎉🔥💎"}]`)
+	e.Value = json.RawMessage(`{"string":"🚀🌟🎉🔥💎⚡🎯🏆🎸🎺日本語でスマートコントラクトのイベントを発行しています日本語でスマートコントラクトのイベントを発行しています"}`)
+	src := &fakeSource{
+		events: source.EventPage{Events: []source.Event{e}},
+		status: source.Status{Healthy: true},
+	}
+
+	rec := get(t, newTestServer(t, src), "/partials/events")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.True(t, utf8.ValidString(body), "rendered HTML must be valid UTF-8")
+	assert.NotContains(t, body, "\uFFFD", "multi-byte characters must not be split into replacement characters")
+	assert.Contains(t, body, "日本語でスマートコントラクトのイベントを発行しています🚀…")
 }
