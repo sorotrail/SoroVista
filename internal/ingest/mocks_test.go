@@ -15,11 +15,13 @@ import (
 type mockRPC struct {
 	mu sync.Mutex
 
-	latest    uint32
-	health    rpc.Health
-	responses []rpc.GetEventsResult
-	errs      []error
-	requests  []rpc.GetEventsRequest
+	latest      uint32
+	latestErrs  []error
+	health      rpc.Health
+	responses   []rpc.GetEventsResult
+	errs        []error
+	requests    []rpc.GetEventsRequest
+	onGetLatest func()
 }
 
 func (m *mockRPC) GetEvents(_ context.Context, req rpc.GetEventsRequest) (rpc.GetEventsResult, error) {
@@ -46,8 +48,22 @@ func (m *mockRPC) GetEvents(_ context.Context, req rpc.GetEventsRequest) (rpc.Ge
 
 func (m *mockRPC) GetLatestLedger(context.Context) (rpc.LatestLedger, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return rpc.LatestLedger{Sequence: m.latest}, nil
+	fn := m.onGetLatest
+	var err error
+	if len(m.latestErrs) > 0 {
+		err = m.latestErrs[0]
+		m.latestErrs = m.latestErrs[1:]
+	}
+	latest := m.latest
+	m.mu.Unlock()
+
+	if fn != nil {
+		fn()
+	}
+	if err != nil {
+		return rpc.LatestLedger{}, err
+	}
+	return rpc.LatestLedger{Sequence: latest}, nil
 }
 
 func (m *mockRPC) GetHealth(context.Context) (rpc.Health, error) {
@@ -73,6 +89,8 @@ type mockStore struct {
 
 	upsertErr error
 	stateErr  error
+
+	onSaveState func(store.IngestState)
 }
 
 func newMockStore() *mockStore {
@@ -110,11 +128,18 @@ func (m *mockStore) GetIngestState(context.Context) (store.IngestState, error) {
 
 func (m *mockStore) SaveIngestState(_ context.Context, s store.IngestState) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.stateErr != nil {
-		return m.stateErr
+		err := m.stateErr
+		m.mu.Unlock()
+		return err
 	}
 	m.state = s
+	fn := m.onSaveState
+	m.mu.Unlock()
+
+	if fn != nil {
+		fn(s)
+	}
 	return nil
 }
 
