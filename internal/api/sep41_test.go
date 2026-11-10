@@ -64,6 +64,122 @@ func TestDetectTokenEvent(t *testing.T) {
 	}
 }
 
+func TestDetectTokenEvent_AmountPrecision(t *testing.T) {
+	tests := []struct {
+		name       string
+		event      string
+		value      string
+		wantAmount string
+	}{
+		{
+			name:       "i128 large number above 2^53 preserves exact digits",
+			event:      "transfer",
+			value:      `{"i128":123456789012345678901}`,
+			wantAmount: "123456789012345678901",
+		},
+		{
+			name:       "i128 2^53+1 boundary preserves exact digits",
+			event:      "transfer",
+			value:      `{"i128":9007199254740993}`,
+			wantAmount: "9007199254740993",
+		},
+		{
+			name:       "i128 string format preserved",
+			event:      "transfer",
+			value:      `{"i128":"123456789012345678901"}`,
+			wantAmount: "123456789012345678901",
+		},
+		{
+			name:       "i128 negative number",
+			event:      "transfer",
+			value:      `{"i128":-1}`,
+			wantAmount: "-1",
+		},
+		{
+			name:       "u128 max integer 2^128-1",
+			event:      "mint",
+			value:      `{"u128":340282366920938463463374607431768211455}`,
+			wantAmount: "340282366920938463463374607431768211455",
+		},
+		{
+			name:       "u128 string format",
+			event:      "mint",
+			value:      `{"u128":"50000000000"}`,
+			wantAmount: "50000000000",
+		},
+		{
+			name:       "i64 negative min",
+			event:      "burn",
+			value:      `{"i64":-9223372036854775808}`,
+			wantAmount: "-9223372036854775808",
+		},
+		{
+			name:       "i64 positive max",
+			event:      "burn",
+			value:      `{"i64":9223372036854775807}`,
+			wantAmount: "9223372036854775807",
+		},
+		{
+			name:       "u64 positive max",
+			event:      "clawback",
+			value:      `{"u64":18446744073709551615}`,
+			wantAmount: "18446744073709551615",
+		},
+		{
+			name:       "u64 small number",
+			event:      "transfer",
+			value:      `{"u64":1000}`,
+			wantAmount: "1000",
+		},
+		{
+			name:       "exponent form rejected",
+			event:      "transfer",
+			value:      `{"i128":1e+20}`,
+			wantAmount: "",
+		},
+		{
+			name:       "float decimal point rejected",
+			event:      "transfer",
+			value:      `{"i128":12.34}`,
+			wantAmount: "",
+		},
+		{
+			name:       "non-integer string rejected",
+			event:      "transfer",
+			value:      `{"i128":"not-an-integer"}`,
+			wantAmount: "",
+		},
+		{
+			name:       "unrecognized key yields no amount",
+			event:      "transfer",
+			value:      `{"other":1000}`,
+			wantAmount: "",
+		},
+		{
+			name:       "void value yields no amount",
+			event:      "transfer",
+			value:      `{"void":null}`,
+			wantAmount: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := source.Event{
+				Topics: json.RawMessage(`[{"symbol":"` + tc.event + `"},{"address":"GA...FROM"},{"address":"GA...TO"}]`),
+				Value:  json.RawMessage(tc.value),
+			}
+			info := DetectTokenEvent(ev)
+			if info == nil {
+				t.Fatalf("expected detected event for %s, got nil", tc.name)
+			}
+			if info.Amount != tc.wantAmount {
+				t.Fatalf("amount mismatch: got %q, want %q", info.Amount, tc.wantAmount)
+			}
+		})
+	}
+}
+
 func TestEventsResponseCarriesTokenAnnotation(t *testing.T) {
 	events := []source.Event{
 		{
