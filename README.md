@@ -318,6 +318,7 @@ once written, so re-reading a ledger range is a no-op rather than a rewrite.
 ```sh
 make build     # compile to bin/sorovista
 make test      # unit tests; the Postgres tests skip without a database
+make test-race # unit tests under the Go data race detector
 make test-db   # everything, against the docker-compose Postgres
 make lint      # golangci-lint
 make fmt       # gofmt

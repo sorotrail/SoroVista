@@ -26,6 +26,18 @@ jobs:
       - name: Test
         run: go test ./...
 
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Test (race detector)
+        run: go test -race ./...
+
   # Same test suite again, this time with TEST_DATABASE_URL set so the
   # store integration tests (internal/store/postgres_test.go) run too
   # instead of skipping.
