@@ -133,6 +133,56 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			name: "log level info is parsed",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://localhost/sorovista",
+				"LOG_LEVEL":    "info",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, slog.LevelInfo, c.LogLevel)
+			},
+		},
+		{
+			name: "log level warn is parsed",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://localhost/sorovista",
+				"LOG_LEVEL":    "warn",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, slog.LevelWarn, c.LogLevel)
+			},
+		},
+		{
+			name: "log level warning is parsed",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://localhost/sorovista",
+				"LOG_LEVEL":    "warning",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, slog.LevelWarn, c.LogLevel)
+			},
+		},
+		{
+			name: "log level error is parsed",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://localhost/sorovista",
+				"LOG_LEVEL":    "error",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, slog.LevelError, c.LogLevel)
+			},
+		},
+		{
+			name: "log level is case-insensitive in Load",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://localhost/sorovista",
+				"LOG_LEVEL":    "DEBUG",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, slog.LevelDebug, c.LogLevel)
+			},
+		},
+		{
 			name: "invalid log level is rejected",
 			env: map[string]string{
 				"DATABASE_URL": "postgres://localhost/sorovista",
@@ -201,6 +251,47 @@ func TestValidContractID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, ValidContractID(tt.id))
+		})
+	}
+}
+
+func TestParseLevel(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    slog.Level
+		wantErr string
+	}{
+		{name: "debug lowercase", input: "debug", want: slog.LevelDebug},
+		{name: "debug uppercase", input: "DEBUG", want: slog.LevelDebug},
+		{name: "debug mixed case", input: "DeBuG", want: slog.LevelDebug},
+		{name: "info lowercase", input: "info", want: slog.LevelInfo},
+		{name: "info uppercase", input: "INFO", want: slog.LevelInfo},
+		{name: "info mixed case", input: "InFo", want: slog.LevelInfo},
+		{name: "warn lowercase", input: "warn", want: slog.LevelWarn},
+		{name: "warn uppercase", input: "WARN", want: slog.LevelWarn},
+		{name: "warning lowercase", input: "warning", want: slog.LevelWarn},
+		{name: "warning uppercase", input: "WARNING", want: slog.LevelWarn},
+		{name: "error lowercase", input: "error", want: slog.LevelError},
+		{name: "error uppercase", input: "ERROR", want: slog.LevelError},
+		{name: "error mixed case", input: "ErRoR", want: slog.LevelError},
+		{name: "empty string rejected", input: "", want: slog.LevelInfo, wantErr: `invalid LOG_LEVEL "" (want debug, info, warn or error)`},
+		{name: "unknown level rejected", input: "verbose", want: slog.LevelInfo, wantErr: `invalid LOG_LEVEL "verbose" (want debug, info, warn or error)`},
+		{name: "trace rejected", input: "trace", want: slog.LevelInfo, wantErr: `invalid LOG_LEVEL "trace" (want debug, info, warn or error)`},
+		{name: "critical rejected", input: "critical", want: slog.LevelInfo, wantErr: `invalid LOG_LEVEL "critical" (want debug, info, warn or error)`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseLevel(tt.input)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Equal(t, tt.wantErr, err.Error())
+				assert.Equal(t, tt.want, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
