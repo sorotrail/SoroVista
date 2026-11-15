@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -203,4 +204,66 @@ func TestValidContractID(t *testing.T) {
 			assert.Equal(t, tt.want, ValidContractID(tt.id))
 		})
 	}
+}
+
+// parseLevel maps LOG_LEVEL onto a slog.Level. Half of it was unreached: the
+// "warn" spelling, the case folding, and the default branch. The default branch
+// matters beyond its message, because it returns a usable level along with the
+// error: Load propagates the error, but a caller that ignored it would log at
+// info rather than at whatever was asked for, so the pairing is pinned here.
+func TestParseLevel(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    slog.Level
+		wantErr string
+	}{
+		{"debug", "debug", slog.LevelDebug, ""},
+		{"info", "info", slog.LevelInfo, ""},
+		{"warn", "warn", slog.LevelWarn, ""},
+		{"warning is accepted as warn", "warning", slog.LevelWarn, ""},
+		{"error", "error", slog.LevelError, ""},
+		{"upper case", "DEBUG", slog.LevelDebug, ""},
+		{"mixed case", "WaRnInG", slog.LevelWarn, ""},
+		{"empty is invalid", "", slog.LevelInfo, `invalid LOG_LEVEL ""`},
+		{"unknown word", "verbose", slog.LevelInfo, `invalid LOG_LEVEL "verbose"`},
+		{"numeric text is invalid", "3", slog.LevelInfo, `invalid LOG_LEVEL "3"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseLevel(tt.in)
+			assert.Equal(t, tt.want, got)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Contains(t, err.Error(), "want debug, info, warn or error")
+		})
+	}
+}
+
+// getenv returns the fallback for an unset or empty variable and the value
+// otherwise. The empty case is the one that was unreached, and it is the one
+// that matters: `LOG_LEVEL=` in a .env file must behave like leaving it out.
+func TestGetenv(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("SOROVISTA_TEST_GETENV", "value")
+		assert.Equal(t, "value", getenv("SOROVISTA_TEST_GETENV", "fallback"))
+	})
+	t.Run("empty falls back", func(t *testing.T) {
+		t.Setenv("SOROVISTA_TEST_GETENV", "")
+		assert.Equal(t, "fallback", getenv("SOROVISTA_TEST_GETENV", "fallback"))
+	})
+	t.Run("unset falls back", func(t *testing.T) {
+		t.Setenv("SOROVISTA_TEST_GETENV", "x") // registered for restore, then cleared
+		os.Unsetenv("SOROVISTA_TEST_GETENV")
+		assert.Equal(t, "fallback", getenv("SOROVISTA_TEST_GETENV", "fallback"))
+	})
+	t.Run("no fallback", func(t *testing.T) {
+		t.Setenv("SOROVISTA_TEST_GETENV", "")
+		assert.Equal(t, "", getenv("SOROVISTA_TEST_GETENV", ""))
+	})
 }
