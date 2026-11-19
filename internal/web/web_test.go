@@ -3,10 +3,12 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -29,10 +31,19 @@ type fakeSource struct {
 	status        source.Status
 	err           error
 
-	lastEventQuery source.EventQuery
+	// contractFn, when set, scripts ListContracts by query so paging tests can
+	// return different pages for different cursors.
+	contractFn func(source.ContractQuery) (source.ContractPage, error)
+
+	lastEventQuery    source.EventQuery
+	lastContractQuery source.ContractQuery
 }
 
-func (f *fakeSource) ListContracts(context.Context, source.ContractQuery) (source.ContractPage, error) {
+func (f *fakeSource) ListContracts(_ context.Context, q source.ContractQuery) (source.ContractPage, error) {
+	f.lastContractQuery = q
+	if f.contractFn != nil {
+		return f.contractFn(q)
+	}
 	return f.contracts, f.err
 }
 
@@ -86,6 +97,16 @@ func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
 	return rec
+}
+
+// nextPageURL digs the paging link out of a rendered page. The query string is
+// HTML-escaped in the attribute, so it has to be unescaped before replaying it
+// as a request.
+func nextPageURL(t *testing.T, body string) string {
+	t.Helper()
+	m := regexp.MustCompile(`href="([^"]*cursor=[^"]*)"`).FindStringSubmatch(body)
+	require.Len(t, m, 2, "page should contain a next-page link")
+	return html.UnescapeString(m[1])
 }
 
 // TestTemplatesParse is the guard against a template typo shipping: templates
@@ -162,6 +183,132 @@ func TestContractsPageEmptyState(t *testing.T) {
 	rec := get(t, newTestServer(t, src), "/contracts")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "No contracts to show")
+}
+
+func sampleContract(id string, ledger int64) source.Contract {
+	return source.Contract{
+		ID:           id,
+		EventCount:   1,
+		FirstLedger:  ledger,
+		LastLedger:   ledger,
+		LastActivity: time.Unix(ledger, 0).UTC(),
+	}
+}
+
+func TestContractsPagePaginates(t *testing.T) {
+	firstID := testContract
+	secondID := "C" + strings.Repeat("B", 55)
+	pages := map[string]source.ContractPage{
+		"": {
+			Contracts:  []source.Contract{sampleContract(firstID, 200)},
+			NextCursor: "page-2",
+		},
+		"page-2": {
+			Contracts: []source.Contract{sampleContract(secondID, 100)},
+		},
+	}
+	src := &fakeSource{
+		status: source.Status{Healthy: true},
+		contractFn: func(q source.ContractQuery) (source.ContractPage, error) {
+			return pages[q.Cursor], nil
+		},
+	}
+	h := newTestServer(t, src)
+
+	first := get(t, h, "/contracts?limit=1")
+	require.Equal(t, http.StatusOK, first.Code)
+	body := first.Body.String()
+	assert.Contains(t, body, firstID)
+	assert.NotContains(t, body, secondID)
+	assert.Contains(t, body, "More contracts are available")
+	assert.Contains(t, body, "Next page")
+
+	next := nextPageURL(t, body)
+	assert.Contains(t, next, "limit=1", "the next link should preserve the page size")
+
+	second := get(t, h, next)
+	require.Equal(t, http.StatusOK, second.Code)
+	body = second.Body.String()
+	assert.Contains(t, body, secondID)
+	assert.NotContains(t, body, firstID, "page two must not repeat page one")
+	assert.NotContains(t, body, "Next page", "the final page should not offer another")
+	assert.Equal(t, "page-2", src.lastContractQuery.Cursor)
+}
+
+func TestContractsPageKeepsSearchWhilePaging(t *testing.T) {
+	firstID := testContract
+	secondID := "C" + strings.Repeat("D", 55)
+	pages := map[string]source.ContractPage{
+		"": {
+			Contracts:  []source.Contract{sampleContract(firstID, 200)},
+			NextCursor: "filtered-page-2",
+		},
+		"filtered-page-2": {
+			Contracts: []source.Contract{sampleContract(secondID, 100)},
+		},
+	}
+	src := &fakeSource{
+		status: source.Status{Healthy: true},
+		contractFn: func(q source.ContractQuery) (source.ContractPage, error) {
+			return pages[q.Cursor], nil
+		},
+	}
+	h := newTestServer(t, src)
+
+	first := get(t, h, "/contracts?search=ABC&limit=1")
+	require.Equal(t, http.StatusOK, first.Code)
+	assert.Equal(t, "ABC", src.lastContractQuery.Search)
+	assert.Equal(t, 1, src.lastContractQuery.Limit)
+
+	next := nextPageURL(t, first.Body.String())
+	assert.Contains(t, next, "search=ABC")
+	assert.Contains(t, next, "limit=1")
+
+	second := get(t, h, next)
+	require.Equal(t, http.StatusOK, second.Code)
+	assert.Contains(t, second.Body.String(), secondID)
+	assert.Equal(t, "ABC", src.lastContractQuery.Search, "page two must stay filtered")
+	assert.Equal(t, 1, src.lastContractQuery.Limit)
+}
+
+func TestContractsPageClampsLimit(t *testing.T) {
+	src := &fakeSource{
+		contracts: source.ContractPage{},
+		status:    source.Status{Healthy: true},
+	}
+	h := newTestServer(t, src)
+
+	get(t, h, "/contracts?limit=9999")
+	assert.Equal(t, source.MaxLimit, src.lastContractQuery.Limit)
+
+	get(t, h, "/contracts?limit=not-a-number")
+	assert.Equal(t, source.DefaultLimit, src.lastContractQuery.Limit)
+}
+
+func TestContractsPageFallsBackOnInvalidCursor(t *testing.T) {
+	calls := 0
+	src := &fakeSource{
+		status: source.Status{Healthy: true},
+		contractFn: func(q source.ContractQuery) (source.ContractPage, error) {
+			calls++
+			if q.Cursor != "" {
+				return source.ContractPage{}, source.ErrInvalidCursor
+			}
+			return source.ContractPage{
+				Contracts: []source.Contract{sampleContract(testContract, 100)},
+			}, nil
+		},
+	}
+
+	rec := get(t, newTestServer(t, src), "/contracts?cursor=stale&search=ABC&limit=5")
+	require.Equal(t, http.StatusOK, rec.Code, "a bad cursor should render a page, not a 500")
+
+	body := rec.Body.String()
+	assert.Contains(t, body, "invalid or has expired")
+	assert.Contains(t, body, testContract)
+	assert.Equal(t, 2, calls, "the handler should retry once without the cursor")
+	assert.Equal(t, "", src.lastContractQuery.Cursor)
+	assert.Equal(t, "ABC", src.lastContractQuery.Search, "the fallback must keep the filter")
 }
 
 func TestContractDetailRenders(t *testing.T) {

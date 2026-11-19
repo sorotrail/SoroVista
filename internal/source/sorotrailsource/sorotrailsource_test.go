@@ -381,6 +381,39 @@ func TestListContractsSearchAndPaging(t *testing.T) {
 		}
 		assert.Len(t, seen, 5)
 	})
+
+	t.Run("search survives paging", func(t *testing.T) {
+		seen := map[string]bool{}
+		cursor := ""
+		for i := 0; i < 10; i++ {
+			page, err := src.ListContracts(context.Background(), source.ContractQuery{
+				Search: "CONTRACT", Limit: 2, Cursor: cursor,
+			})
+			require.NoError(t, err)
+			for _, c := range page.Contracts {
+				assert.Contains(t, c.ID, "CONTRACT")
+				require.False(t, seen[c.ID], "contract %s repeated across filtered pages", c.ID)
+				seen[c.ID] = true
+			}
+			cursor = page.NextCursor
+			if cursor == "" {
+				break
+			}
+		}
+		assert.Len(t, seen, 5)
+	})
+
+	t.Run("a malformed cursor is an invalid cursor", func(t *testing.T) {
+		_, err := src.ListContracts(context.Background(), source.ContractQuery{Cursor: "!!!"})
+		assert.ErrorIs(t, err, source.ErrInvalidCursor)
+	})
+
+	t.Run("an offset past the end is a stale cursor", func(t *testing.T) {
+		_, err := src.ListContracts(context.Background(), source.ContractQuery{
+			Cursor: encodeCursor("", 999),
+		})
+		assert.ErrorIs(t, err, source.ErrInvalidCursor)
+	})
 }
 
 func TestContractListIsCached(t *testing.T) {

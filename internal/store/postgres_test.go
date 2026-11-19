@@ -360,6 +360,7 @@ func TestListContractsRejectsBadCursor(t *testing.T) {
 
 	_, _, err := pg.ListContracts(context.Background(), source.ContractQuery{Cursor: "!!!not-base64"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, source.ErrInvalidCursor)
 	assert.Contains(t, err.Error(), "invalid cursor")
 }
 
