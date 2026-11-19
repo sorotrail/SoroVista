@@ -210,3 +210,53 @@ func TestContextCancellationIsRespected(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+func TestGetNetwork(t *testing.T) {
+	tests := []struct {
+		name        string
+		handler     func(req capturedRequest) string
+		wantNetwork Network
+		wantErr     string
+	}{
+		{
+			name: "happy path returns network details",
+			handler: func(req capturedRequest) string {
+				assert.Equal(t, "getNetwork", req.Method)
+				return `{"jsonrpc":"2.0","id":1,"result":{
+					"passphrase":"Test SDF Network ; September 2015",
+					"friendlierUrl":"https://friendbot.stellar.org",
+					"protocolVersion":21
+				}}`
+			},
+			wantNetwork: Network{
+				Passphrase:      PassphraseTestnet,
+				FriendlierURL:   "https://friendbot.stellar.org",
+				ProtocolVersion: 21,
+			},
+		},
+		{
+			name: "error path returns RPC error",
+			handler: func(req capturedRequest) string {
+				assert.Equal(t, "getNetwork", req.Method)
+				return `{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`
+			},
+			wantErr: "getNetwork: rpc error -32601: Method not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, captured := fakeNode(t, tt.handler)
+			net, err := client.GetNetwork(context.Background())
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantNetwork, net)
+				require.Len(t, *captured, 1)
+				assert.Equal(t, "getNetwork", (*captured)[0].Method)
+			}
+		})
+	}
+}
