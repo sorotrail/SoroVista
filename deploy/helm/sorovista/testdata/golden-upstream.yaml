@@ -1,0 +1,150 @@
+---
+# Source: sorovista/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sorovista
+      app.kubernetes.io/instance: sorovista
+
+---
+# Source: sorovista/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: sorovista/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  SOURCE_MODE: "sorotrail"
+  HTTP_ADDR: ":8080"
+  LOG_LEVEL: "info"
+  CORS_ALLOWED_ORIGINS: "https://explorer.example.test"
+  SOROTRAIL_URL: "http://sorotrail:8080"
+
+---
+# Source: sorovista/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+
+---
+# Source: sorovista/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sorovista
+      app.kubernetes.io/instance: sorovista
+  template:
+    metadata:
+      annotations:
+        # Roll pods when the rendered configuration changes.
+        checksum/config: 871d2907702a9fe8bdacacf8de1c17a32a52dabd412c09bb87bcd565915a50c8
+      labels:
+        app.kubernetes.io/name: sorovista
+        app.kubernetes.io/instance: sorovista
+    spec:
+      serviceAccountName: sorovista
+      securityContext:
+        fsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: sorovista
+          image: "ghcr.io/sorotrail/sorovista:0.1.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: sorovista
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi

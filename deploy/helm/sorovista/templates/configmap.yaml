@@ -1,0 +1,36 @@
+{{- include "sorovista.validateMode" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sorovista.fullname" . }}
+  labels:
+    {{- include "sorovista.labels" . | nindent 4 }}
+data:
+  SOURCE_MODE: {{ .Values.sourceMode | quote }}
+  HTTP_ADDR: {{ .Values.httpAddr | quote }}
+  LOG_LEVEL: {{ .Values.logLevel | quote }}
+  {{- if .Values.corsAllowedOrigins }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.corsAllowedOrigins | quote }}
+  {{- end }}
+  {{- if eq .Values.sourceMode "rpc" }}
+  NETWORK: {{ .Values.network | quote }}
+  {{- if .Values.rpcUrl }}
+  RPC_URL: {{ .Values.rpcUrl | quote }}
+  {{- end }}
+  {{- if .Values.networkPassphrase }}
+  NETWORK_PASSPHRASE: {{ .Values.networkPassphrase | quote }}
+  {{- end }}
+  POLL_INTERVAL: {{ .Values.pollInterval | quote }}
+  {{- if .Values.watchedContracts }}
+  WATCHED_CONTRACTS: {{ .Values.watchedContracts | quote }}
+  {{- end }}
+  {{- if .Values.startLedger }}
+  START_LEDGER: {{ .Values.startLedger | quote }}
+  {{- end }}
+  {{- if .Values.retentionLedgers }}
+  RETENTION_LEDGERS: {{ .Values.retentionLedgers | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if eq .Values.sourceMode "sorotrail" }}
+  SOROTRAIL_URL: {{ .Values.sorotrailUrl | quote }}
+  {{- end }}

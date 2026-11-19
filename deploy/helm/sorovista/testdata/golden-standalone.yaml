@@ -1,0 +1,187 @@
+---
+# Source: sorovista/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: sorovista/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sorovista-database
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://sorovista:secret@postgres:5432/sorovista?sslmode=disable"
+
+---
+# Source: sorovista/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  SOURCE_MODE: "rpc"
+  HTTP_ADDR: ":8080"
+  LOG_LEVEL: "debug"
+  CORS_ALLOWED_ORIGINS: "https://explorer.example.test"
+  NETWORK: "mainnet"
+  RPC_URL: "https://rpc.example.test"
+  NETWORK_PASSPHRASE: "Example Network ; 2026"
+  POLL_INTERVAL: "7s"
+  WATCHED_CONTRACTS: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+  START_LEDGER: "12345"
+  RETENTION_LEDGERS: "4321"
+
+---
+# Source: sorovista/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+
+---
+# Source: sorovista/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sorovista
+      app.kubernetes.io/instance: sorovista
+  template:
+    metadata:
+      annotations:
+        # Roll pods when the rendered configuration changes.
+        checksum/config: 08daecead2d68ec4ae9d6c5a2867d622b19442f08fd35c5c3e90a1b1a23cbc64
+        checksum/secret: a56de3e7da7cb784384f5128725af447a2f0cd42612a78dfaffaae8e86852671
+      labels:
+        app.kubernetes.io/name: sorovista
+        app.kubernetes.io/instance: sorovista
+    spec:
+      serviceAccountName: sorovista
+      securityContext:
+        fsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: sorovista
+          image: "ghcr.io/sorotrail/sorovista:0.1.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: sorovista
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sorovista-database
+                  key: DATABASE_URL
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 250m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+
+---
+# Source: sorovista/templates/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sorovista
+  labels:
+    helm.sh/chart: sorovista-0.1.0
+    app.kubernetes.io/name: sorovista
+    app.kubernetes.io/instance: sorovista
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sorovista
+      app.kubernetes.io/instance: sorovista
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
