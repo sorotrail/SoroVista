@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/sorotrail/sorovista/internal/metrics"
 	"github.com/sorotrail/sorovista/internal/rpc"
 	"github.com/sorotrail/sorovista/internal/source"
 	"github.com/sorotrail/sorovista/internal/store"
@@ -372,4 +376,90 @@ func TestPollOncePublishesDecodedEventsToBroker(t *testing.T) {
 	require.NoError(t, ing.pollOnce(context.Background()))
 
 	assert.Equal(t, []string{"0000000100-0000000001"}, pub.events)
+}
+
+// cancelOnFirstFetch cancels the run context when the first event fetch is
+// made, after the ingester's own context check. The scripted client ignores the
+// cancellation, so Run records exactly one poll outcome and then exits without
+// waiting for its next timer tick.
+type cancelOnFirstFetch struct {
+	*mockRPC
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (c *cancelOnFirstFetch) GetEvents(ctx context.Context, req rpc.GetEventsRequest) (rpc.GetEventsResult, error) {
+	c.once.Do(c.cancel)
+	return c.mockRPC.GetEvents(ctx, req)
+}
+
+func TestWithMetrics(t *testing.T) {
+	tests := []struct {
+		name        string
+		pollErr     error
+		wantOutcome string
+	}{
+		{
+			name:        "successful poll",
+			wantOutcome: `sorovista_polls_total{outcome="ok"} 1`,
+		},
+		{
+			name:        "failed poll",
+			pollErr:     errors.New("node exploded"),
+			wantOutcome: `sorovista_polls_total{outcome="error"} 1`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := metrics.New()
+			client := &cancelOnFirstFetch{mockRPC: &mockRPC{latest: 100}}
+			if tt.pollErr != nil {
+				client.errs = []error{tt.pollErr}
+			}
+			ing := newTestIngester(client, newMockStore(), Options{
+				PollInterval:     time.Hour,
+				RetentionLedgers: 50,
+			})
+
+			returned := ing.WithMetrics(m)
+			assert.Same(t, ing, returned, "WithMetrics must return the receiver so calls can chain")
+			assert.Same(t, m, ing.metrics)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			client.cancel = cancel
+
+			done := make(chan error, 1)
+			go func() { done <- ing.Run(ctx) }()
+
+			select {
+			case err := <-done:
+				require.NoError(t, err, "cancellation is a clean shutdown, not a failure")
+			case <-time.After(5 * time.Second):
+				t.Fatal("ingester did not stop after its context was cancelled")
+			}
+
+			rec := httptest.NewRecorder()
+			m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), tt.wantOutcome)
+		})
+	}
+}
+
+func TestWithMetricsAcceptsNil(t *testing.T) {
+	ing := newTestIngester(&mockRPC{latest: 100}, newMockStore(), Options{})
+
+	returned := ing.WithMetrics(nil)
+	assert.Same(t, ing, returned)
+	assert.Nil(t, ing.metrics)
+
+	// Run calls these hooks unconditionally; nil instrumentation must be a
+	// no-op rather than a panic.
+	assert.NotPanics(t, func() {
+		ing.metrics.RecordPoll(false, time.Millisecond)
+		ing.metrics.RecordEvents(3)
+		ing.metrics.SetLag(1)
+	})
 }
