@@ -52,6 +52,10 @@ type contractsData struct {
 	Contracts  []source.Contract
 	Search     string
 	NextCursor string
+	Limit      int
+	// StaleCursor is true when the requested cursor could not be used and the
+	// first page was rendered instead.
+	StaleCursor bool
 	// NextURL is the ready-made link to the following page, so the template
 	// does not have to rebuild the query string.
 	NextURL string
@@ -59,27 +63,53 @@ type contractsData struct {
 
 func (s *Server) contracts(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
+
+	// Parse the limit leniently for the web UI: an unparseable value falls
+	// back to the default rather than rejecting a browsable page. The source
+	// clamps it to the same bounds as the JSON API.
+	limit := source.DefaultLimit
+	if raw := strings.TrimSpace(params.Get("limit")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			limit = n
+		}
+	}
+	limit = source.NormalizeLimit(limit)
+
 	q := source.ContractQuery{
 		Search: strings.TrimSpace(params.Get("search")),
 		Cursor: params.Get("cursor"),
+		Limit:  limit,
 	}
 
 	page, err := s.src.ListContracts(r.Context(), q)
+	staleCursor := false
+	if err != nil && q.Cursor != "" {
+		// Cursors are opaque and may come from an older deployment or the
+		// other operating mode. If the paged request fails, retry from the
+		// first page: a bad link should still show a useful list rather than a
+		// 500. A genuine backend outage fails the retry too and is reported.
+		staleCursor = true
+		q.Cursor = ""
+		page, err = s.src.ListContracts(r.Context(), q)
+	}
 	if err != nil {
 		s.fail(w, r, "listing contracts", err)
 		return
 	}
 
 	data := contractsData{
-		Contracts:  page.Contracts,
-		Search:     q.Search,
-		NextCursor: page.NextCursor,
+		Contracts:   page.Contracts,
+		Search:      q.Search,
+		NextCursor:  page.NextCursor,
+		Limit:       limit,
+		StaleCursor: staleCursor,
 	}
 	if page.NextCursor != "" {
 		next := url.Values{}
 		if q.Search != "" {
 			next.Set("search", q.Search)
 		}
+		next.Set("limit", strconv.Itoa(limit))
 		next.Set("cursor", page.NextCursor)
 		data.NextURL = "/contracts?" + next.Encode()
 	}

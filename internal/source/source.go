@@ -32,6 +32,12 @@ import (
 // to a 404 without knowing which backend produced it.
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalidCursor is returned when a cursor cannot be decoded by the
+// implementation that is asked to continue from it. Cursors are opaque and
+// deployment-specific, so a stale or cross-mode cursor is a normal input
+// error rather than a backend failure.
+var ErrInvalidCursor = errors.New("invalid cursor")
+
 // Paging and aggregation limits shared by every implementation, so bounds mean
 // the same thing regardless of which backend serves the request.
 const (

@@ -112,6 +112,13 @@ func TestListContracts(t *testing.T) {
 	assert.Equal(t, 10, src.lastContractQuery.Limit)
 }
 
+func TestListContractsRejectsStaleCursor(t *testing.T) {
+	src := &fakeSource{err: source.ErrInvalidCursor}
+
+	rec := do(t, testServer(src), "/api/contracts?cursor=stale")
+	require.Equal(t, http.StatusBadRequest, rec.Code, "a bad cursor is a client error, not a backend failure")
+}
+
 func TestListEventsParsesFilters(t *testing.T) {
 	src := &fakeSource{events: source.EventPage{Events: []source.Event{}}}
 	h := testServer(src)
