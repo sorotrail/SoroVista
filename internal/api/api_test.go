@@ -129,6 +129,43 @@ func TestListEventsParsesFilters(t *testing.T) {
 	assert.JSONEq(t, `{"symbol":"transfer"}`, string(q.Topic))
 }
 
+func TestListEventsParsesSuccessfulCallFilter(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+		want   *bool
+	}{
+		{"successful only", "/api/events?successful=true", boolPtr(true)},
+		{"failed only", "/api/events?successful=false", boolPtr(false)},
+		{"alias uses the response field name", "/api/events?in_successful_call=false", boolPtr(false)},
+		{"omitted means no constraint", "/api/events", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := &fakeSource{events: source.EventPage{}}
+			rec := do(t, testServer(src), tt.target)
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tt.want, src.lastEventQuery.InSuccessfulCall)
+		})
+	}
+
+	t.Run("composes with other filters", func(t *testing.T) {
+		src := &fakeSource{events: source.EventPage{}}
+		rec := do(t, testServer(src), "/api/contracts/"+testContract+"/events?type=contract&successful=false&from_ledger=100")
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		q := src.lastEventQuery
+		assert.Equal(t, testContract, q.ContractID)
+		assert.Equal(t, "contract", q.Type)
+		assert.Equal(t, int64(100), q.FromLedger)
+		require.NotNil(t, q.InSuccessfulCall)
+		assert.False(t, *q.InSuccessfulCall)
+	})
+}
+
+func boolPtr(v bool) *bool { return &v }
+
 func TestListEventsAcceptsJSONTopic(t *testing.T) {
 	src := &fakeSource{events: source.EventPage{}}
 	rec := do(t, testServer(src), `/api/events?topic=%7B%22address%22%3A%22GABC%22%7D`)
@@ -149,6 +186,8 @@ func TestListEventsRejectsBadInput(t *testing.T) {
 		{"inverted range", "/api/events?from_ledger=200&to_ledger=100", "is after to_ledger"},
 		{"limit too large", "/api/events?limit=100000", "limit must be an integer"},
 		{"limit zero", "/api/events?limit=0", "limit must be an integer"},
+		{"non-boolean successful", "/api/events?successful=maybe", "invalid successful"},
+		{"non-boolean alias", "/api/events?in_successful_call=1", "invalid in_successful_call"},
 	}
 
 	h := testServer(&fakeSource{})

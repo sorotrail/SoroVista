@@ -143,6 +143,12 @@ func (p *Postgres) QueryEvents(ctx context.Context, q source.EventQuery) ([]sour
 	if q.ToLedger > 0 {
 		where = append(where, "ledger <= "+arg(q.ToLedger))
 	}
+	if q.InSuccessfulCall != nil {
+		// The column is NOT NULL DEFAULT TRUE, so equality matches every row
+		// unambiguously. No index is added: the value is overwhelmingly true,
+		// which gives an index on it too little selectivity to be useful.
+		where = append(where, "in_successful_call = "+arg(*q.InSuccessfulCall))
+	}
 	if q.Cursor != "" {
 		where = append(where, "id < "+arg(q.Cursor))
 	}
@@ -352,6 +358,42 @@ func (p *Postgres) EventBuckets(ctx context.Context, q source.BucketQuery) (sour
 		return out, fmt.Errorf("reading event buckets: %w", err)
 	}
 	return out, nil
+}
+
+// PruneBatchSize bounds one DELETE so a first sweep over a large table does
+// not hold a single long transaction or starve the read path.
+const PruneBatchSize = 1000
+
+// PruneEvents deletes events older than olderThan in bounded batches. It keys
+// on ledger_closed_at (which has an index from migration 0002) inside a
+// subselect ordered by id. The outer delete by id is safe for paging: TOIDs
+// sort chronologically, so removing whole ranges of old rows cannot reorder
+// or duplicate what an in-flight cursor still has to read.
+func (p *Postgres) PruneEvents(ctx context.Context, olderThan time.Time) (int64, error) {
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+
+		tag, err := p.pool.Exec(ctx, `
+			DELETE FROM events
+			WHERE id IN (
+				SELECT id FROM events
+				WHERE ledger_closed_at < $1
+				ORDER BY id
+				LIMIT $2
+			)`, olderThan.UTC(), PruneBatchSize)
+		if err != nil {
+			return total, fmt.Errorf("pruning events: %w", err)
+		}
+
+		removed := tag.RowsAffected()
+		total += removed
+		if removed < PruneBatchSize {
+			return total, nil
+		}
+	}
 }
 
 // Stats summarizes everything stored.

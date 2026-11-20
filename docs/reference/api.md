@@ -39,7 +39,10 @@ A contract's events, newest-first.
 | `tx_hash` | Restrict to events from one transaction |
 | `topic` | Match by decoded topic (see build semantics) |
 | `from_ledger` / `to_ledger` | Inclusive ledger bounds |
+| `successful` | `true` = only events from calls that ultimately succeeded; `false` = only events from calls that reverted; omitted = both |
 | `limit` / `cursor` | Pagination |
+
+`in_successful_call` is accepted as an alias for `successful`. The three states matter because Soroban keeps events emitted by a reverted call: a `transfer` event from a failed call did not transfer anything. Filtering to `successful=true` answers what a contract actually did, while `successful=false` is useful for debugging reverts.
 
 ```bash
 curl 'http://localhost:8080/api/contracts/CC.../events?type=contract&limit=50'
@@ -51,7 +54,7 @@ Fetch a single event by its unique id (TOID), fully decoded.
 ### `GET /api/events/stream`
 Stream newly ingested events in real time over Server-Sent Events (`text/event-stream`).
 
-**Query parameters:** Accepts the same filters as `GET /api/events`: `contract_id`, `type` (`contract`, `system`, `diagnostic`), `topic`, `tx_hash`, `from_ledger`, and `to_ledger`.
+**Query parameters:** Accepts the same filters as `GET /api/events`: `contract_id`, `type` (`contract`, `system`, `diagnostic`), `topic`, `tx_hash`, `from_ledger`, `to_ledger`, and `successful` (also accepted as `in_successful_call`).
 
 ```bash
 curl -N 'http://localhost:8080/api/events/stream?contract_id=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC&type=contract'

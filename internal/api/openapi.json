@@ -63,6 +63,9 @@
             "$ref": "#/components/parameters/EventType"
           },
           {
+            "$ref": "#/components/parameters/InSuccessfulCall"
+          },
+          {
             "$ref": "#/components/parameters/Topic"
           },
           {
@@ -145,6 +148,9 @@
             "$ref": "#/components/parameters/EventType"
           },
           {
+            "$ref": "#/components/parameters/InSuccessfulCall"
+          },
+          {
             "$ref": "#/components/parameters/Topic"
           },
           {
@@ -201,6 +207,9 @@
           },
           {
             "$ref": "#/components/parameters/EventType"
+          },
+          {
+            "$ref": "#/components/parameters/InSuccessfulCall"
           },
           {
             "$ref": "#/components/parameters/Topic"
@@ -534,6 +543,14 @@
           "type": "string"
         },
         "description": "Restrict to events produced by one transaction"
+      },
+      "InSuccessfulCall": {
+        "name": "successful",
+        "in": "query",
+        "schema": {
+          "type": "boolean"
+        },
+        "description": "`true` returns only events emitted by a contract call that ultimately succeeded; `false` returns only events from calls that reverted. Omit for both. `in_successful_call` is accepted as an alias."
       }
     },
     "responses": {

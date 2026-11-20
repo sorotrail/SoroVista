@@ -64,7 +64,14 @@ type Config struct {
 	// back RetentionLedgers from the chain tip. Standalone mode only.
 	StartLedger uint32
 	// RetentionLedgers is the cold-start reach-back when StartLedger is unset.
+	// It has nothing to do with pruning: it only decides where a fresh
+	// ingester begins reading.
 	RetentionLedgers uint32
+	// EventRetention is how long stored events are kept, measured against
+	// their on-chain ledger_closed_at timestamp. Zero keeps everything, which
+	// is the default so an upgrade never starts deleting an operator's data.
+	// Standalone mode only.
+	EventRetention time.Duration
 
 	// SoroTrailURL is the base URL of a SoroTrail indexer's HTTP API, e.g.
 	// http://localhost:8080. Upstream mode only.
@@ -154,6 +161,25 @@ func Load() (Config, error) {
 			return cfg, fmt.Errorf("invalid RETENTION_LEDGERS %q: want a positive integer", v)
 		}
 		cfg.RetentionLedgers = uint32(n)
+	}
+
+	// EVENT_RETENTION is a duration, deliberately distinct from
+	// RETENTION_LEDGERS so the two cannot be mistaken for each other: one
+	// bounds storage, the other only picks a cold-start ledger.
+	for _, name := range []string{"EVENT_RETENTION", "EVENT_RETENTION_PERIOD"} {
+		v := os.Getenv(name)
+		if v == "" {
+			continue
+		}
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid %s %q: want a duration such as 720h", name, v)
+		}
+		if d <= 0 {
+			return cfg, fmt.Errorf("invalid %s %q: want a positive duration", name, v)
+		}
+		cfg.EventRetention = d
+		break
 	}
 
 	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {

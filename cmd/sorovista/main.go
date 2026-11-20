@@ -28,6 +28,7 @@ import (
 	"github.com/sorotrail/sorovista/internal/ingest"
 	"github.com/sorotrail/sorovista/internal/metrics"
 	"github.com/sorotrail/sorovista/internal/reqid"
+	"github.com/sorotrail/sorovista/internal/retention"
 	"github.com/sorotrail/sorovista/internal/rpc"
 	"github.com/sorotrail/sorovista/internal/source"
 	"github.com/sorotrail/sorovista/internal/source/rpcsource"
@@ -67,7 +68,7 @@ func run() error {
 		broker = api.NewBroker()
 	}
 
-	src, cleanup, startIngest, err := buildSource(ctx, cfg, log, m, broker)
+	src, cleanup, startIngest, startSweep, err := buildSource(ctx, cfg, log, m, broker)
 	if err != nil {
 		return err
 	}
@@ -84,6 +85,15 @@ func run() error {
 			defer wg.Done()
 			if err := startIngest(ctx); err != nil {
 				log.Error("ingester exited", "error", err)
+			}
+		}()
+	}
+	if startSweep != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := startSweep(ctx); err != nil {
+				log.Error("retention sweeper exited", "error", err)
 			}
 		}()
 	}
@@ -143,24 +153,27 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 	src source.EventSource,
 	cleanup func(),
 	startIngest func(context.Context) error,
+	startSweep func(context.Context) error,
 	err error,
 ) {
 	switch cfg.SourceMode {
 	case config.ModeSoroTrail:
 		log.Info("using upstream sorotrail source", "url", cfg.SoroTrailURL)
-		return sorotrailsource.New(cfg.SoroTrailURL, nil), func() {}, nil, nil
+		// Upstream mode has no database, so there is nothing to prune and no
+		// sweeper to construct.
+		return sorotrailsource.New(cfg.SoroTrailURL, nil), func() {}, nil, nil, nil
 
 	case config.ModeRPC:
 		log.Info("using standalone rpc source", "rpc_url", cfg.RPCURL)
 
 		if err := store.Migrate(cfg.DatabaseURL); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		log.Info("migrations applied")
 
 		pg, err := store.NewPostgres(ctx, cfg.DatabaseURL)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 
 		client := rpc.NewHTTPClient(cfg.RPCURL, nil)
@@ -171,7 +184,7 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 		if net, err := client.GetNetwork(ctx); err != nil {
 			log.Warn("could not verify network passphrase", "error", err)
 		} else if err := config.VerifyPassphrase(cfg.Network.Passphrase, net.Passphrase); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		log.Info("network verified", "network", cfg.Network.Name, "rpc_url", cfg.RPCURL)
 
@@ -188,10 +201,16 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 
 		ingester.WithMetrics(m).WithPublisher(broker)
 
-		return rpcsource.New(pg, client), pg.Close, ingester.Run, nil
+		var startSweep func(context.Context) error
+		if cfg.EventRetention > 0 {
+			log.Info("event retention enabled", "horizon", cfg.EventRetention)
+			startSweep = retention.New(pg, cfg.EventRetention, log, m).Run
+		}
+
+		return rpcsource.New(pg, client), pg.Close, ingester.Run, startSweep, nil
 
 	default:
-		return nil, nil, nil, fmt.Errorf("unsupported SOURCE_MODE %q", cfg.SourceMode)
+		return nil, nil, nil, nil, fmt.Errorf("unsupported SOURCE_MODE %q", cfg.SourceMode)
 	}
 }
 

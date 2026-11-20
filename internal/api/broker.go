@@ -174,6 +174,9 @@ func eventMatchesQuery(q source.EventQuery, e source.Event) bool {
 	if q.ToLedger > 0 && e.Ledger > q.ToLedger {
 		return false
 	}
+	if q.InSuccessfulCall != nil && e.InSuccessfulCall != *q.InSuccessfulCall {
+		return false
+	}
 	if len(q.Topic) > 0 && !topicMatchesEvent(e.Topics, q.Topic) {
 		return false
 	}

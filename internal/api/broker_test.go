@@ -61,6 +61,44 @@ func TestNewBroker(t *testing.T) {
 	}
 }
 
+func TestEventMatchesQuerySuccessfulCall(t *testing.T) {
+	yes, no := true, false
+	tests := []struct {
+		name  string
+		want  *bool
+		calls []bool
+		pass  []bool
+	}{
+		{
+			name:  "unset matches successful and failed events",
+			want:  nil,
+			calls: []bool{true, false},
+			pass:  []bool{true, true},
+		},
+		{
+			name:  "successful only",
+			want:  &yes,
+			calls: []bool{true, false},
+			pass:  []bool{true, false},
+		},
+		{
+			name:  "failed only",
+			want:  &no,
+			calls: []bool{true, false},
+			pass:  []bool{false, true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, successful := range tt.calls {
+				got := eventMatchesQuery(source.EventQuery{InSuccessfulCall: tt.want}, source.Event{InSuccessfulCall: successful})
+				require.Equal(t, tt.pass[i], got)
+			}
+		})
+	}
+}
+
 func TestSubscriberCount(t *testing.T) {
 	tests := []struct {
 		name  string

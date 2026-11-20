@@ -197,11 +197,16 @@ func TestQueryEventsFilters(t *testing.T) {
 	diagnostic.Type = "diagnostic"
 	diagnostic.Topics = json.RawMessage(`[{"symbol":"mint"}]`)
 
+	reverted := event(107, 1, "CAAA")
+	reverted.InSuccessfulCall = false
+	reverted.Topics = json.RawMessage(`[{"symbol":"transfer"},{"address":"GABC"}]`)
+
 	events := []source.Event{
 		event(100, 1, "CAAA"),
 		event(105, 1, "CAAA"),
 		event(110, 1, "CBBB"),
 		diagnostic,
+		reverted,
 	}
 	_, err := pg.UpsertEvents(ctx, events)
 	require.NoError(t, err)
@@ -245,7 +250,7 @@ func TestQueryEventsFilters(t *testing.T) {
 			Topic: json.RawMessage(`{"address":"GABC"}`),
 		})
 		require.NoError(t, err)
-		assert.Len(t, got, 3, "the three events carrying that address topic")
+		assert.Len(t, got, 4, "the four events carrying that address topic")
 	})
 
 	t.Run("combined filters", func(t *testing.T) {
@@ -255,8 +260,39 @@ func TestQueryEventsFilters(t *testing.T) {
 			FromLedger: 105,
 		})
 		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, int64(107), got[0].Ledger)
+		assert.Equal(t, int64(105), got[1].Ledger)
+	})
+
+	t.Run("only successful calls", func(t *testing.T) {
+		ok := true
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{InSuccessfulCall: &ok})
+		require.NoError(t, err)
+		require.Len(t, got, 4)
+		for _, e := range got {
+			assert.True(t, e.InSuccessfulCall)
+		}
+	})
+
+	t.Run("only failed calls", func(t *testing.T) {
+		failed := false
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{InSuccessfulCall: &failed})
+		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, int64(105), got[0].Ledger)
+		assert.Equal(t, reverted.ID, got[0].ID)
+	})
+
+	t.Run("successful composes with other filters", func(t *testing.T) {
+		failed := false
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{
+			ContractID:       "CAAA",
+			Type:             "contract",
+			InSuccessfulCall: &failed,
+		})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, reverted.ID, got[0].ID)
 	})
 }
 
@@ -496,6 +532,73 @@ func TestEventBuckets(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, cStats.TotalEvents, contractSeries.TotalEvents)
 	})
+}
+
+func TestPruneEventsDeletesOnlyPastHorizon(t *testing.T) {
+	pg := newTestStore(t)
+	ctx := context.Background()
+
+	now := time.Now().UTC()
+	horizon := now.Add(-24 * time.Hour)
+
+	old := event(100, 1, "CAAA")
+	old.LedgerClosedAt = now.Add(-48 * time.Hour)
+	oldAgain := event(101, 1, "CAAA")
+	oldAgain.LedgerClosedAt = now.Add(-25 * time.Hour)
+	fresh := event(200, 1, "CBBB")
+	fresh.LedgerClosedAt = now.Add(-time.Hour)
+	// Exactly at the horizon is kept: the horizon is exclusive.
+	boundary := event(150, 1, "CBBB")
+	boundary.LedgerClosedAt = horizon
+
+	_, err := pg.UpsertEvents(ctx, []source.Event{old, oldAgain, fresh, boundary})
+	require.NoError(t, err)
+
+	require.NoError(t, pg.SaveIngestState(ctx, IngestState{LastLedger: 500}))
+
+	removed, err := pg.PruneEvents(ctx, horizon)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), removed)
+
+	stats, err := pg.Stats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), stats.TotalEvents, "counts must reflect the pruned rows")
+	assert.Equal(t, int64(1), stats.ContractCount)
+
+	contracts, _, err := pg.ListContracts(ctx, source.ContractQuery{})
+	require.NoError(t, err)
+	require.Len(t, contracts, 1, "a fully pruned contract must not linger as an empty row")
+	assert.Equal(t, "CBBB", contracts[0].ID)
+
+	state, err := pg.GetIngestState(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(500), state.LastLedger, "a sweep must never rewind the resume point")
+}
+
+func TestPruneEventsBatchesUntilExhausted(t *testing.T) {
+	pg := newTestStore(t)
+	ctx := context.Background()
+
+	// More rows than one batch proves the loop continues until nothing is
+	// left rather than stopping after the first DELETE.
+	const extra = 10
+	events := make([]source.Event, 0, PruneBatchSize+extra)
+	for i := 0; i < PruneBatchSize+extra; i++ {
+		e := event(int64(100+i), 1, "CAAA")
+		e.ID = fmt.Sprintf("%019d-%010d", i, 1)
+		e.LedgerClosedAt = time.Now().UTC().Add(-48 * time.Hour)
+		events = append(events, e)
+	}
+	_, err := pg.UpsertEvents(ctx, events)
+	require.NoError(t, err)
+
+	removed, err := pg.PruneEvents(ctx, time.Now().UTC().Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, int64(PruneBatchSize+extra), removed)
+
+	stats, err := pg.Stats(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, stats.TotalEvents)
 }
 
 func TestIngestState(t *testing.T) {

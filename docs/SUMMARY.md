@@ -26,6 +26,7 @@
 ## Operations
 
 * [Deployment](operations/deployment.md)
+* [Deploying with systemd](operations/systemd.md)
 
 ## Community
 

@@ -59,8 +59,13 @@ type upstreamQuery struct {
 	Topic      json.RawMessage
 	FromLedger int64
 	ToLedger   int64
-	Cursor     string
-	Limit      int
+	// InSuccessfulCall is applied locally while scanning, not sent upstream:
+	// SoroTrail's API has no documented equivalent filter. Counting matches
+	// inside the scan keeps paging correct — a page that is filtered after it
+	// has been cut short would silently return fewer than the requested limit.
+	InSuccessfulCall *bool
+	Cursor           string
+	Limit            int
 }
 
 // upstreamPage is SoroTrail's /events response: {"events": [...], "cursor": "..."}.

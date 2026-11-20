@@ -12,10 +12,22 @@ All configuration is via environment variables. With Docker Compose, set them in
 | `DATABASE_URL` | — | Postgres connection string. Required only in standalone mode. |
 | `POLL_INTERVAL` | `5s` | How often standalone mode polls the RPC for new events. |
 | `WATCHED_CONTRACTS` | (empty) | Comma-separated `C...` addresses to restrict standalone ingestion to. Empty = index everything. |
+| `START_LEDGER` | unset | Force a cold start from this ledger. Leave unset to reach back `RETENTION_LEDGERS` from the tip. |
+| `RETENTION_LEDGERS` | `17280` | Cold-start reach-back **only**, in ledgers (~24h). This does not prune stored events. |
+| `EVENT_RETENTION` | unset (keep forever) | **Delete** stored events older than this duration, measured against `ledger_closed_at`. Examples: `720h` (30 days), `2160h` (90 days). Unset keeps everything. Standalone mode only. |
 | `HTTP_ADDR` | `:8080` | Listen address for the UI and API. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 
 SoroVista validates configuration at startup: if `SOURCE_MODE=rpc` but `DATABASE_URL` is missing, or `SOURCE_MODE=sorotrail` but `SOROTRAIL_URL` is missing, it fails fast with a clear message rather than starting in a broken state.
+
+### `RETENTION_LEDGERS` vs `EVENT_RETENTION`
+
+These names are similar but do opposite things, so keep them straight:
+
+- **`RETENTION_LEDGERS` is not a retention policy.** It only decides how far behind the chain tip a fresh ingester starts reading when `START_LEDGER` is unset. Once ingested, an event is kept forever unless `EVENT_RETENTION` is set.
+- **`EVENT_RETENTION` is the retention policy.** It is a duration. A background sweeper in standalone mode deletes events whose on-chain `ledger_closed_at` is older than the horizon, in bounded batches. `ingest_state` is never touched, so restarting does not send the ingester back to the cold-start horizon.
+
+An invalid or non-positive `EVENT_RETENTION` fails at startup. Deleting events is irreversible: set this only if you deliberately want bounded storage, and prefer upstream mode if you need durable long history.
 
 ## Choosing a mode
 

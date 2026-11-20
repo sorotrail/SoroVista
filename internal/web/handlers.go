@@ -194,10 +194,11 @@ type eventsFragment struct {
 // filterValues are the raw filter inputs, kept as strings so the form can
 // redisplay exactly what was typed.
 type filterValues struct {
-	Type       string
-	Topic      string
-	FromLedger string
-	ToLedger   string
+	Type             string
+	Topic            string
+	FromLedger       string
+	ToLedger         string
+	InSuccessfulCall string
 }
 
 // eventsFragmentFor parses the filters from the request and loads one page of
@@ -220,10 +221,11 @@ func (s *Server) eventsFragmentFor(r *http.Request, contractID string) (eventsFr
 		Events:     page.Events,
 		ContractID: contractID,
 		Filters: filterValues{
-			Type:       params.Get("type"),
-			Topic:      params.Get("topic"),
-			FromLedger: params.Get("from_ledger"),
-			ToLedger:   params.Get("to_ledger"),
+			Type:             params.Get("type"),
+			Topic:            params.Get("topic"),
+			FromLedger:       params.Get("from_ledger"),
+			ToLedger:         params.Get("to_ledger"),
+			InSuccessfulCall: params.Get("successful"),
 		},
 	}
 
@@ -232,7 +234,7 @@ func (s *Server) eventsFragmentFor(r *http.Request, contractID string) (eventsFr
 		if contractID != "" {
 			next.Set("contract_id", contractID)
 		}
-		for _, key := range []string{"type", "topic", "from_ledger", "to_ledger", "limit"} {
+		for _, key := range []string{"type", "topic", "from_ledger", "to_ledger", "successful", "limit"} {
 			if v := params.Get(key); v != "" {
 				next.Set(key, v)
 			}

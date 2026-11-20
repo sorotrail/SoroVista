@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,6 +59,9 @@ func (s *stubStore) EventBuckets(_ context.Context, q source.BucketQuery) (sourc
 }
 
 func (s *stubStore) Stats(context.Context) (source.Stats, error) { return s.stats, s.err }
+func (s *stubStore) PruneEvents(context.Context, time.Time) (int64, error) {
+	return 0, s.err
+}
 
 func (s *stubStore) GetIngestState(context.Context) (store.IngestState, error) {
 	return store.IngestState{}, nil

@@ -160,6 +160,49 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, uint32(1000), c.RetentionLedgers)
 			},
 		},
+		{
+			name: "event retention defaults to keeping everything",
+			env:  map[string]string{"DATABASE_URL": "postgres://localhost/sorovista"},
+			check: func(t *testing.T, c Config) {
+				assert.Zero(t, c.EventRetention)
+			},
+		},
+		{
+			name: "event retention is parsed as a duration",
+			env: map[string]string{
+				"DATABASE_URL":    "postgres://localhost/sorovista",
+				"EVENT_RETENTION": "720h",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, 720*time.Hour, c.EventRetention)
+			},
+		},
+		{
+			name: "event retention period alias is accepted",
+			env: map[string]string{
+				"DATABASE_URL":           "postgres://localhost/sorovista",
+				"EVENT_RETENTION_PERIOD": "48h",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, 48*time.Hour, c.EventRetention)
+			},
+		},
+		{
+			name: "invalid event retention is rejected",
+			env: map[string]string{
+				"DATABASE_URL":    "postgres://localhost/sorovista",
+				"EVENT_RETENTION": "30d",
+			},
+			wantErr: "invalid EVENT_RETENTION",
+		},
+		{
+			name: "non-positive event retention is rejected",
+			env: map[string]string{
+				"DATABASE_URL":    "postgres://localhost/sorovista",
+				"EVENT_RETENTION": "-1h",
+			},
+			wantErr: "positive duration",
+		},
 	}
 
 	for _, tt := range tests {

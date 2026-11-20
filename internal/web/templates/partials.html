@@ -92,6 +92,14 @@
     <label for="f-to">To ledger</label>
     <input id="f-to" type="number" name="to_ledger" value="{{.Filters.ToLedger}}" min="1" size="10">
   </div>
+  <div>
+    <label for="f-success">Call outcome</label>
+    <select id="f-success" name="successful">
+      <option value=""{{if eq .Filters.InSuccessfulCall ""}} selected{{end}}>any</option>
+      <option value="true"{{if eq .Filters.InSuccessfulCall "true"}} selected{{end}}>successful only</option>
+      <option value="false"{{if eq .Filters.InSuccessfulCall "false"}} selected{{end}}>failed only</option>
+    </select>
+  </div>
   <button type="submit">Filter</button>
 </form>
 {{end}}

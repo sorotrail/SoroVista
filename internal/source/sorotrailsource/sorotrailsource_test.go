@@ -297,6 +297,38 @@ func TestListEventsFiltersByContract(t *testing.T) {
 	}
 }
 
+func TestListEventsFiltersBySuccessfulCall(t *testing.T) {
+	events := makeEvents(100, 1000, "CABC")
+	// Every tenth event came from a successful call; the rest were reverted.
+	for i := range events {
+		events[i].InSuccessfulCall = i%10 == 0
+	}
+	src := newTestSource(newFakeIndexer(events))
+	ctx := context.Background()
+
+	t.Run("only successful calls", func(t *testing.T) {
+		yes := true
+		page, err := src.ListEvents(ctx, source.EventQuery{Limit: 25, InSuccessfulCall: &yes})
+		require.NoError(t, err)
+		require.Len(t, page.Events, 10)
+		for _, e := range page.Events {
+			assert.True(t, e.InSuccessfulCall)
+		}
+		assert.Empty(t, page.NextCursor, "the scan exhausted history, so there is no next page")
+	})
+
+	t.Run("only failed calls keeps paging full", func(t *testing.T) {
+		no := false
+		page, err := src.ListEvents(ctx, source.EventQuery{Limit: 25, InSuccessfulCall: &no})
+		require.NoError(t, err)
+		require.Len(t, page.Events, 25, "filtering during the scan must not return a short page")
+		for _, e := range page.Events {
+			assert.False(t, e.InSuccessfulCall)
+		}
+		assert.NotEmpty(t, page.NextCursor)
+	})
+}
+
 func TestListEventsOnEmptyIndexer(t *testing.T) {
 	src := newTestSource(newFakeIndexer(nil))
 

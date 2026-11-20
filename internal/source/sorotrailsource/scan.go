@@ -129,6 +129,12 @@ func (s *Source) fetchWindow(ctx context.Context, q upstreamQuery, fromLedger, t
 			if beforeID != "" && e.ID >= beforeID {
 				continue
 			}
+			// Filtering here rather than after the scan means only matching
+			// events count toward the requested page size, so the scan keeps
+			// reading older windows instead of returning a short page.
+			if q.InSuccessfulCall != nil && e.InSuccessfulCall != *q.InSuccessfulCall {
+				continue
+			}
 			out = append(out, e)
 		}
 

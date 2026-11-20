@@ -51,10 +51,11 @@ func (s *Source) ListEvents(ctx context.Context, q source.EventQuery) (source.Ev
 	limit := source.NormalizeLimit(q.Limit)
 
 	upstream := upstreamQuery{
-		ContractID: q.ContractID,
-		Type:       q.Type,
-		TxHash:     q.TxHash,
-		Topic:      q.Topic,
+		ContractID:       q.ContractID,
+		Type:             q.Type,
+		TxHash:           q.TxHash,
+		Topic:            q.Topic,
+		InSuccessfulCall: q.InSuccessfulCall,
 	}
 
 	// Establish the newest ledger to scan down from: the caller's bound, the

@@ -50,6 +50,11 @@ type Store interface {
 	EventBuckets(ctx context.Context, q source.BucketQuery) (source.BucketSeries, error)
 	// Stats summarizes everything stored.
 	Stats(ctx context.Context) (source.Stats, error)
+	// PruneEvents deletes events whose on-chain ledger_closed_at is older
+	// than olderThan, in bounded batches, and returns how many rows it
+	// removed. It never touches ingest_state: deleting the resume point would
+	// send the ingester back to the retention horizon on restart.
+	PruneEvents(ctx context.Context, olderThan time.Time) (int64, error)
 
 	GetIngestState(ctx context.Context) (IngestState, error)
 	SaveIngestState(ctx context.Context, s IngestState) error
