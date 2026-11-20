@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +41,12 @@ func fakeNode(t *testing.T, handler func(req capturedRequest) string) (*HTTPClie
 	t.Cleanup(srv.Close)
 
 	return NewHTTPClient(srv.URL, srv.Client()), &captured
+}
+
+func TestTruncateRPCErrorBodyKeepsUTF8Valid(t *testing.T) {
+	got := truncate(strings.Repeat("a", 255)+"😀tail", 256)
+	require.True(t, utf8.ValidString(got))
+	assert.Equal(t, strings.Repeat("a", 255)+"…", got)
 }
 
 func TestGetEventsDecodesJSONFormat(t *testing.T) {

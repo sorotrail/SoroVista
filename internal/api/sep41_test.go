@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sorotrail/sorovista/internal/source"
 )
 
@@ -61,6 +64,50 @@ func TestDetectTokenEvent(t *testing.T) {
 		if info := DetectTokenEvent(ev); info != nil {
 			t.Fatalf("%s: should not be detected, got %+v", name, info)
 		}
+	}
+}
+
+func TestDetectTokenEventPreservesIntegerAmounts(t *testing.T) {
+	tests := []struct {
+		name   string
+		value  string
+		amount string
+	}{
+		{"i128 above float precision", `{"i128":9007199254740993}`, "9007199254740993"},
+		{"large i128", `{"i128":123456789012345678901}`, "123456789012345678901"},
+		{"u64", `{"u64":18446744073709551615}`, "18446744073709551615"},
+		{"i64", `{"i64":-9223372036854775808}`, "-9223372036854775808"},
+		{"u128", `{"u128":340282366920938463463374607431768211455}`, "340282366920938463463374607431768211455"},
+		{"numeric string", `{"i128":"123456789012345678901"}`, "123456789012345678901"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev := source.Event{
+				Topics: json.RawMessage(`[{"symbol":"transfer"},{"address":"FROM"},{"address":"TO"}]`),
+				Value:  json.RawMessage(tt.value),
+			}
+			info := DetectTokenEvent(ev)
+			require.NotNil(t, info)
+			assert.Equal(t, tt.amount, info.Amount)
+		})
+	}
+
+	for name, value := range map[string]string{
+		"decimal":   `{"i128":1.5}`,
+		"exponent":  `{"i128":1e3}`,
+		"null":      `{"i128":null}`,
+		"not a map": `null`,
+	} {
+		t.Run(name+" amount is omitted", func(t *testing.T) {
+			ev := source.Event{
+				Topics: json.RawMessage(`[{"symbol":"transfer"},{"address":"FROM"},{"address":"TO"}]`),
+				Value:  json.RawMessage(value),
+			}
+			info := DetectTokenEvent(ev)
+			require.NotNil(t, info)
+			assert.Empty(t, info.Amount)
+		})
 	}
 }
 

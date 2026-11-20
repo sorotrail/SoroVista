@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/sorotrail/sorovista/internal/textutil"
 )
 
 // MaxRenderDepth bounds nesting when rendering, so a pathological deeply
@@ -161,12 +163,8 @@ func renderMap(inner any, depth int) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-// Shorten abbreviates a long identifier for table display, keeping the head
-// and tail that make it recognizable: CABCDEF…UVWXYZ. Strings already short
-// enough are returned unchanged.
+// Shorten abbreviates a long identifier for table display, keeping keep
+// Unicode code points from each end so multibyte characters stay intact.
 func Shorten(s string, keep int) string {
-	if keep <= 0 || len(s) <= keep*2+1 {
-		return s
-	}
-	return s[:keep] + "…" + s[len(s)-keep:]
+	return textutil.ShortenRunes(s, keep)
 }

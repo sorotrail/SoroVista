@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sorotrail/sorovista/internal/textutil"
 )
 
 // Client is the Stellar RPC surface SoroVista uses. The ingester depends on
@@ -208,9 +210,8 @@ func isXDRFormatRejection(err error) bool {
 		strings.Contains(msg, "unknown field")
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
+// truncate returns a UTF-8-safe error body prefix of at most maxBytes bytes,
+// plus an ellipsis when it has to cut the input.
+func truncate(s string, maxBytes int) string {
+	return textutil.TruncateBytes(s, maxBytes)
 }

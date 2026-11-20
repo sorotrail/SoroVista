@@ -3,6 +3,7 @@ package decode
 import (
 	"encoding/json"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -167,6 +168,11 @@ func TestShorten(t *testing.T) {
 			assert.Equal(t, tt.want, Shorten(tt.in, tt.keep))
 		})
 	}
+
+	got := Shorten("日本語の文章を安全に短く切り詰めます。追加文字列", 4)
+	assert.Equal(t, "日本語の…加文字列", got)
+	assert.True(t, utf8.ValidString(got))
+	assert.Equal(t, "start…e🚀end", Shorten("start😀middle🚀end", 5))
 }
 
 func TestTopicsValuePrefersNodeDecodedJSON(t *testing.T) {

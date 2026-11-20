@@ -24,6 +24,7 @@ import (
 	"github.com/sorotrail/sorovista/internal/config"
 	"github.com/sorotrail/sorovista/internal/decode"
 	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/textutil"
 )
 
 //go:embed templates/*.html
@@ -189,8 +190,8 @@ func templateFuncs() template.FuncMap {
 		"eventName": decode.EventName,
 		// shorten abbreviates long identifiers for table cells.
 		"shorten": decode.Shorten,
-		// summary renders a value, truncated for a single table cell.
-		"summary": func(raw any, limit int) string {
+		// summary renders a value, limited by Unicode code points for a table cell.
+		"summary": func(raw any, maxRunes int) string {
 			var text string
 			switch v := raw.(type) {
 			case string:
@@ -198,10 +199,7 @@ func templateFuncs() template.FuncMap {
 			default:
 				text = fmt.Sprint(v)
 			}
-			if len(text) <= limit {
-				return text
-			}
-			return text[:limit] + "…"
+			return textutil.TruncateRunes(text, maxRunes)
 		},
 		// join concatenates strings with a separator.
 		"join": strings.Join,

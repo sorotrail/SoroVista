@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -119,6 +120,42 @@ func TestIndexRenders(t *testing.T) {
 	assert.Contains(t, body, "transfer")
 	// The retention caveat must be visible so an empty explorer is explicable.
 	assert.Contains(t, body, "only while running")
+}
+
+func TestEventSummariesTruncateAtRuneBoundaries(t *testing.T) {
+	e := sampleEvent()
+	topicText := strings.Repeat("日", 30)
+	valueText := strings.Repeat("😀", 50)
+	e.Topics = json.RawMessage(`[{"string":"` + topicText + `"}]`)
+	e.Value = json.RawMessage(`{"string":"` + valueText + `"}`)
+
+	rec := get(t, newTestServer(t, &fakeSource{
+		events: source.EventPage{Events: []source.Event{e}},
+		status: source.Status{Healthy: true},
+	}), "/")
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.True(t, utf8.ValidString(body))
+	assert.Contains(t, body, strings.Repeat("日", 28)+"…")
+	assert.Contains(t, body, strings.Repeat("😀", 48)+"…")
+}
+
+func TestLayoutUsesSystemColorScheme(t *testing.T) {
+	src := &fakeSource{
+		event:  sampleEvent(),
+		status: source.Status{Healthy: true},
+	}
+	h := newTestServer(t, src)
+
+	for _, path := range []string{"/", "/events/" + sampleEvent().ID, "/no-such-page"} {
+		t.Run(path, func(t *testing.T) {
+			rec := get(t, h, path)
+			body := rec.Body.String()
+			assert.Contains(t, body, "@media (prefers-color-scheme: dark)")
+			assert.Contains(t, body, "--background:")
+			assert.Contains(t, body, "--text:")
+		})
+	}
 }
 
 func TestIndexShowsUnhealthyBanner(t *testing.T) {

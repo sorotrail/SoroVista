@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/sorotrail/sorovista/internal/source"
@@ -42,8 +43,8 @@ var sep41Slots = map[string][2]int{
 // DetectTokenEvent reports the SEP-41 reading of an event, or nil when the
 // event does not match the layout. Matching is structural: first topic a
 // symbol naming a SEP-41 event, two address topics, and — for the
-// amount-bearing events — an i128 value. A contract that happens to emit a
-// transfer-shaped event without implementing SEP-41 is indistinguishable
+// amount-bearing events — an integer amount value. A contract that happens to
+// emit a transfer-shaped event without implementing SEP-41 is indistinguishable
 // from one that does, and the annotation is honest either way: it describes
 // the event's shape, not a verified interface claim.
 func DetectTokenEvent(ev source.Event) *TokenInfo {
@@ -54,11 +55,8 @@ func DetectTokenEvent(ev source.Event) *TokenInfo {
 	if err := json.Unmarshal(ev.Topics, &topics); err != nil {
 		return nil
 	}
-	var value any
-	if len(ev.Value) > 0 {
-		if err := json.Unmarshal(ev.Value, &value); err != nil {
-			return nil
-		}
+	if len(ev.Value) > 0 && !json.Valid(ev.Value) {
+		return nil
 	}
 
 	if len(topics) < 3 {
@@ -81,7 +79,7 @@ func DetectTokenEvent(ev source.Event) *TokenInfo {
 		return info
 	default:
 		info.Event = name
-		if amount, ok := valueAmount(value); ok {
+		if amount, ok := valueAmount(ev.Value); ok {
 			info.Amount = amount
 		}
 		return info
@@ -116,29 +114,57 @@ func topicAddress(topic any) (string, bool) {
 	return "", false
 }
 
-// valueAmount extracts the i128 amount from a decoded event value. Wide
-// integers are decimal strings in the stored shape; small ones may arrive
-// as JSON numbers, formatted back to a decimal string so the annotation is
-// always a string a client can parse as a big integer.
-func valueAmount(value any) (string, bool) {
-	m, ok := value.(map[string]any)
-	if !ok {
+// valueAmount extracts an integer amount from a decoded event value. Reading
+// the raw JSON preserves digits that generic decoding would round through float64.
+func valueAmount(value json.RawMessage) (string, bool) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(value, &m); err != nil {
 		return "", false
 	}
-	switch v := m["i128"].(type) {
-	case string:
-		return v, true
-	case float64:
-		return formatFloat(v), true
+
+	for _, key := range []string{"i128", "u64", "i64", "u128"} {
+		raw, ok := m[key]
+		if !ok {
+			continue
+		}
+
+		raw = bytes.TrimSpace(raw)
+		if len(raw) > 0 && raw[0] == '"' {
+			var s string
+			if err := json.Unmarshal(raw, &s); err != nil {
+				return "", false
+			}
+			return s, true
+		}
+
+		var n json.Number
+		if err := json.Unmarshal(raw, &n); err != nil || n == "" {
+			return "", false
+		}
+		if !isIntegerNumber(n.String()) {
+			return "", false
+		}
+		return n.String(), true
 	}
 	return "", false
 }
 
-func formatFloat(f float64) string {
-	// Small i128s may arrive as JSON numbers; render back to decimal
-	// without exponent, matching the string form.
-	b, _ := json.Marshal(f)
-	return string(b)
+func isIntegerNumber(s string) bool {
+	if s == "" {
+		return false
+	}
+	if s[0] == '-' {
+		s = s[1:]
+	}
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // annotatedEvent is an event response with the optional SEP-41 reading
