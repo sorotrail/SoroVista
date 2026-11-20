@@ -4,6 +4,10 @@ SoroVista is deliberately a small MVP core with clear seams. Most of what it
 could become is not built yet, and that is the point — the interfaces are there
 so features can be added without reworking the middle of the program.
 
+Participation in this project is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md). For reporting security vulnerabilities,
+please follow [SECURITY.md](SECURITY.md) rather than opening a public issue.
+
 ## Getting set up
 
 You need Go 1.25+ and Docker (for Postgres).

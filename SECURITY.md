@@ -8,8 +8,10 @@ an unauthenticated HTTP API.
 ## Reporting a vulnerability
 
 Email security concerns to the repository owner via the GitHub
-"Contact" link on the profile (sorotrail). Please do not open a public
-issue for anything you believe is exploitable.
+"Contact" link on the profile (`sorotrail`). Please do not open a public
+issue for anything you believe is exploitable. (For interpersonal or
+community conduct concerns, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+rather than this security channel.)
 
 Include reproduction steps and, where relevant, the request that
 triggers it. A proof of concept is welcome but not required.
