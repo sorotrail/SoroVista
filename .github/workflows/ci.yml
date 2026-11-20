@@ -26,6 +26,89 @@ jobs:
       - name: Test
         run: go test ./...
 
+  # The Dockerfile is the documented quickstart path, and it can break
+  # without touching a line of Go: ldflags stamps buildinfo by full import
+  # path, and the build runs with CGO disabled. Building the image here
+  # makes that failure a red pull request instead of a broken deploy.
+  #
+  # Nothing is pushed: this repository has no registry credentials in CI,
+  # and a check runnable from a fork must not gain any.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Non-default values on purpose: a build that silently falls back to
+      # the Dockerfile's ARG defaults would still report "dev", "none" and
+      # "unknown", so the smoke test below asserts what it stamped.
+      - name: Compute build metadata
+        id: vars
+        run: |
+          echo "version=ci-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # load: true puts the image in the local daemon so the smoke test can
+      # run it. push: false keeps this job free of credentials, which fork
+      # pull requests could not read anyway.
+      - name: Build image
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: sorovista:ci
+          build-args: |
+            VERSION=${{ steps.vars.outputs.version }}
+            COMMIT=${{ steps.vars.outputs.commit }}
+            DATE=${{ steps.vars.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Upstream mode keeps this hermetic: it opens no database, so the
+      # container starts with no services. The indexer URL deliberately
+      # points at a closed port, so /health must answer 503 — which still
+      # proves the entrypoint, config and HTTP server work.
+      - name: Smoke test the image
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          COMMIT: ${{ steps.vars.outputs.commit }}
+          DATE: ${{ steps.vars.outputs.date }}
+        run: |
+          set -o pipefail
+          docker run -d --name sorovista-smoke --rm -p 18080:8080 \
+            -e SOURCE_MODE=sorotrail \
+            -e SOROTRAIL_URL=http://127.0.0.1:9 \
+            -e HTTP_ADDR=:8080 \
+            sorovista:ci
+          trap 'docker rm -f sorovista-smoke >/dev/null 2>&1 || true' EXIT
+
+          OUT=""
+          for _ in $(seq 1 50); do
+            if OUT=$(curl -sf http://127.0.0.1:18080/api/version); then
+              break
+            fi
+            sleep 0.2
+          done
+          if [ -z "$OUT" ]; then
+            echo "container never answered /api/version"
+            docker logs sorovista-smoke
+            exit 1
+          fi
+          echo "GET /api/version -> $OUT"
+          test "$(echo "$OUT" | jq -r '.version')" = "$VERSION"
+          test "$(echo "$OUT" | jq -r '.commit')" = "$COMMIT"
+          test "$(echo "$OUT" | jq -r '.build_date')" = "$DATE"
+
+          CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' http://127.0.0.1:18080/health)
+          echo "GET /health -> $CODE"
+          cat /tmp/health.json
+          test "$CODE" = "503"
+          jq -e '.mode == "sorotrail" and .healthy == false' /tmp/health.json
+
   # Same test suite again, this time with TEST_DATABASE_URL set so the
   # store integration tests (internal/store/postgres_test.go) run too
   # instead of skipping.

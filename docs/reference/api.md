@@ -91,6 +91,10 @@ Aggregate event counts into contiguous half-open `[start, end)` time buckets ove
 curl 'http://localhost:8080/api/events/buckets?from=2024-01-01T00:00:00Z&to=2024-01-01T06:00:00Z&interval=1h&type=contract'
 ```
 
+## Event responses and the token annotation
+
+Event objects returned by `GET /api/events`, `GET /api/contracts/{id}/events`, `GET /api/events/{id}` and the SSE stream may carry a `token` field describing the event as a SEP-41 token operation. It names the event and resolves its topics into `from`, `to` and `amount` slots. See [SEP-41 token annotation](token-events.md) for the recognised events, the per-event slot meanings and the caveat that the field describes an event's shape rather than verifying that a contract implements SEP-41.
+
 ## Pagination
 
 List responses include `next_cursor`; pass it back as `cursor` for the next page. A null `next_cursor` means you've reached the end. Treat the cursor as opaque.

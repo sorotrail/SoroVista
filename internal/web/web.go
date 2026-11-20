@@ -237,22 +237,26 @@ func classifySearch(query string) searchKind {
 }
 
 // looksLikeEventID reports whether s has the shape of an event TOID: digits,
-// optionally followed by a dash and more digits.
+// one dash, then more digits. The dash is required. A bare number is not a
+// TOID, and routing one to /events/{id} would only produce a 404 when a
+// substring search over contracts is the useful reading.
 func looksLikeEventID(s string) bool {
-	if s == "" {
+	dash := strings.IndexByte(s, '-')
+	if dash <= 0 || dash == len(s)-1 {
 		return false
 	}
-	seenDash := false
-	for i, c := range s {
-		switch {
-		case c >= '0' && c <= '9':
-		case c == '-' && i > 0 && !seenDash:
-			seenDash = true
-		default:
-			return false
+	// A second dash means this is not the single-dash TOID shape.
+	if strings.IndexByte(s[dash+1:], '-') >= 0 {
+		return false
+	}
+	for _, part := range []string{s[:dash], s[dash+1:]} {
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return false
+			}
 		}
 	}
-	return !strings.HasSuffix(s, "-")
+	return true
 }
 
 // errNotFound lets handlers check for a missing record without importing the

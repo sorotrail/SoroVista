@@ -22,10 +22,12 @@
 
 * [REST API](reference/api.md)
 * [Data model](reference/data-model.md)
+* [SEP-41 token annotation](reference/token-events.md)
 
 ## Operations
 
 * [Deployment](operations/deployment.md)
+* [Troubleshooting](operations/troubleshooting.md)
 
 ## Community
 

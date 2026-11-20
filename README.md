@@ -163,6 +163,8 @@ curl http://localhost:8080/health
 
 `/metrics` serves Prometheus instrumentation: HTTP request duration by route pattern, and — in standalone mode — poll outcomes and duration, ingest lag behind the chain tip, seconds since the last poll, and the events-ingested counter. `/livez` and `/readyz` are orchestration probes: liveness checks nothing (a dead backend is a load-balancer concern, not a restart concern); readiness consults the event source's own health view — the database and RPC in standalone mode, the SoroTrail indexer in upstream mode. `/api/version` reports the version, commit and build date baked in at compile time. Every response carries an `X-Request-ID` correlation header, echoed in error bodies and log lines.
 
+If the UI is empty, `/health` returns `503`, or the logs carry a startup warning you do not recognise, see [Troubleshooting](docs/operations/troubleshooting.md). It starts with the empty explorer, which is the most common and least intuitive case.
+
 ## Networks
 
 A Stellar network's passphrase is its identity. `NETWORK` selects a preset — `testnet`, `mainnet` or `futurenet`, each carrying its public RPC endpoint and passphrase; `NETWORK=custom` takes `RPC_URL` + `NETWORK_PASSPHRASE` for private standalone networks. At startup SoroVista asks the RPC which network it belongs to and **refuses to start on a mismatch**, so a mainnet endpoint behind testnet configuration fails fast instead of quietly showing the wrong chain's activity as if the watched contracts simply had none.
