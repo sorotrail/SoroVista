@@ -51,4 +51,11 @@ If the configured source (RPC or SoroTrail URL) or database is unreachable, the 
 
 ## Upgrading
 
-Pull the new version, run pending migrations (standalone mode only), restart. In upstream mode there's no local data to migrate — SoroVista holds no state of its own beyond what it queries live from SoroTrail.
+For a Docker Compose checkout, pull the new version and rebuild/restart the app:
+
+```bash
+git pull
+docker compose up --build -d
+```
+
+In standalone mode, pending migrations are applied automatically at startup. In upstream mode there's no local data to migrate — SoroVista holds no state of its own beyond what it queries live from SoroTrail.
