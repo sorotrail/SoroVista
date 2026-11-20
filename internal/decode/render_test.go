@@ -3,6 +3,7 @@ package decode
 import (
 	"encoding/json"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -148,7 +149,11 @@ func TestEventName(t *testing.T) {
 }
 
 func TestShorten(t *testing.T) {
-	const contract = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+	const (
+		contract = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+		japanese = "日本語でスマートコントラクトのイベントを発行しています"
+		emojis   = "🚀🌟🎉🔥💎⚡🎯🏆🎸🎺"
+	)
 
 	tests := []struct {
 		name string
@@ -158,13 +163,66 @@ func TestShorten(t *testing.T) {
 	}{
 		{"long id is abbreviated", contract, 6, "CDLZFC…HGCYSC"},
 		{"short strings pass through", "abc", 6, "abc"},
+		{"exact 2*keep+1 runes passes through", "1234567", 3, "1234567"},
 		{"zero keep passes through", contract, 0, contract},
 		{"negative keep passes through", contract, -1, contract},
+		{"japanese keep=4 cuts on rune boundaries", japanese, 4, "日本語で…ています"},
+		{"japanese keep=7 cuts on rune boundaries", japanese, 7, "日本語でスマー…発行しています"},
+		{"japanese keep=10 cuts on rune boundaries", japanese, 10, "日本語でスマートコン…ントを発行しています"},
+		{"4-byte emojis cut on rune boundaries", emojis, 2, "🚀🌟…🎸🎺"},
+		{"4-byte emojis short enough pass through", emojis, 5, emojis},
+		{"multi-byte 2*keep runes passes through", "αβγδεζ", 3, "αβγδεζ"},
+		{"multi-byte 2*keep+1 runes passes through", "αβγδεζη", 3, "αβγδεζη"},
+		{"multi-byte 2*keep+2 runes abbreviates middle two runes", "αβγδεζηθ", 3, "αβγ…ζηθ"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, Shorten(tt.in, tt.keep))
+			got := Shorten(tt.in, tt.keep)
+			assert.True(t, utf8.ValidString(got), "Shorten(%q, %d) produced invalid UTF-8: %q", tt.in, tt.keep, got)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	// Sweep every keep value across multi-byte strings to guarantee no cut
+	// ever splits a rune.
+	for _, sample := range []string{japanese, emojis, "αβγδεζηθικλμνξοπ"} {
+		for keep := -1; keep <= len(sample); keep++ {
+			got := Shorten(sample, keep)
+			assert.True(t, utf8.ValidString(got), "invalid UTF-8 for keep=%d on %q: %q", keep, sample, got)
+		}
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	const (
+		japanese = "日本語でイベントを発行しています"
+		emojis   = "🚀🌟🎉🔥💎"
+	)
+
+	tests := []struct {
+		name     string
+		in       string
+		maxRunes int
+		want     string
+	}{
+		{"ascii within limit", "transfer", 28, "transfer"},
+		{"ascii at exact limit", "transfer", 8, "transfer"},
+		{"ascii truncated", "transfer", 5, "trans…"},
+		{"japanese maxRunes=4", japanese, 4, "日本語で…"},
+		{"japanese maxRunes=7", japanese, 7, "日本語でイベン…"},
+		{"japanese maxRunes=10", japanese, 10, "日本語でイベントを発…"},
+		{"4-byte emoji truncated", emojis, 3, "🚀🌟🎉…"},
+		{"4-byte emoji within limit", emojis, 5, emojis},
+		{"zero limit on non-empty", japanese, 0, "…"},
+		{"empty string at zero limit", "", 0, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Truncate(tt.in, tt.maxRunes)
+			assert.True(t, utf8.ValidString(got), "Truncate(%q, %d) produced invalid UTF-8: %q", tt.in, tt.maxRunes, got)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

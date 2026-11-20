@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // MaxRenderDepth bounds nesting when rendering, so a pathological deeply
@@ -161,12 +162,60 @@ func renderMap(inner any, depth int) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-// Shorten abbreviates a long identifier for table display, keeping the head
-// and tail that make it recognizable: CABCDEF…UVWXYZ. Strings already short
-// enough are returned unchanged.
-func Shorten(s string, keep int) string {
-	if keep <= 0 || len(s) <= keep*2+1 {
+// runePrefixEnd walks up to maxRunes UTF-8 code points from the start of s
+// without allocating a []rune slice, returning the byte offset where that
+// prefix ends and whether the entire string fit within maxRunes.
+func runePrefixEnd(s string, maxRunes int) (int, bool) {
+	if maxRunes <= 0 {
+		return 0, len(s) == 0
+	}
+	pos := 0
+	for i := 0; i < maxRunes && pos < len(s); i++ {
+		_, width := utf8.DecodeRuneInString(s[pos:])
+		pos += width
+	}
+	return pos, pos >= len(s)
+}
+
+// Truncate caps s at maxRunes UTF-8 code points (runes) for single-cell table
+// display, appending "…" when runes are dropped. The limit is in runes rather
+// than bytes so multi-byte characters do not shrink a table cell unpredictably
+// or get split mid-character into invalid UTF-8. Grapheme clusters (such as a
+// combining accent on a base character) are not kept together.
+func Truncate(s string, maxRunes int) string {
+	end, allFit := runePrefixEnd(s, maxRunes)
+	if allFit {
 		return s
 	}
-	return s[:keep] + "…" + s[len(s)-keep:]
+	return s[:end] + "…"
+}
+
+// Shorten abbreviates a long identifier for table display, keeping keepRunes
+// UTF-8 code points (runes) at the head and tail so it remains recognizable:
+// CABCDEF…UVWXYZ. Strings with at most keepRunes*2+1 runes (or non-positive
+// keepRunes) are returned unchanged. Both ends cut on rune boundaries so
+// multi-byte characters are never split into invalid UTF-8; grapheme clusters
+// are not kept together.
+func Shorten(s string, keepRunes int) string {
+	if keepRunes <= 0 || len(s) <= keepRunes*2+1 {
+		return s
+	}
+	headEnd, allFit := runePrefixEnd(s, keepRunes)
+	if allFit {
+		return s
+	}
+	tailStart := len(s)
+	for i := 0; i < keepRunes; i++ {
+		_, width := utf8.DecodeLastRuneInString(s[:tailStart])
+		tailStart -= width
+		if tailStart <= headEnd {
+			return s
+		}
+	}
+	// If only a single rune sits between the head and tail, replacing it with
+	// "…" would not make the string any shorter.
+	if _, width := utf8.DecodeRuneInString(s[headEnd:tailStart]); headEnd+width >= tailStart {
+		return s
+	}
+	return s[:headEnd] + "…" + s[tailStart:]
 }
