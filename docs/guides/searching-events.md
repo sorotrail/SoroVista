@@ -8,6 +8,11 @@ Once you're on a contract's page, these are the ways to narrow down what you're 
 
 Every event is `contract`, `system`, or `diagnostic`. Most exploration is `contract` events — the ones a contract's own code emits. The type filter is a dropdown on the contract page, or `type=` on the API.
 
+```bash
+# Only events emitted by the contract's own code
+curl 'http://localhost:8080/api/contracts/CC.../events?type=contract&limit=20'
+```
+
 ## Filter by ledger range
 
 Narrow to a window of activity using `from_ledger` / `to_ledger` — useful when you're investigating "what happened around ledger X" or comparing before/after a known event.
@@ -15,6 +20,18 @@ Narrow to a window of activity using `from_ledger` / `to_ledger` — useful when
 ## Filter by topic
 
 Events are often filterable by their decoded topic — for example, only events whose first topic is `transfer`, or that involve a specific address in a later topic position. This is how you go from "everything this contract did" to "just the transfers."
+
+A bare word is matched as the decoded symbol `{"symbol":"transfer"}`:
+
+```bash
+curl 'http://localhost:8080/api/contracts/CC.../events?topic=transfer'
+```
+
+For a non-symbol topic, pass the decoded JSON value. This matches the address in any topic position:
+
+```bash
+curl 'http://localhost:8080/api/contracts/CC.../events?topic=%7B%22address%22%3A%22GABC...%22%7D'
+```
 
 ## Jump to a specific event
 
