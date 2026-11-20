@@ -7,7 +7,7 @@ Base URL: wherever `HTTP_ADDR` serves (default `http://localhost:8080`). All API
 ## Health & stats
 
 ### `GET /health`
-Reports process health, including the active source (RPC or SoroTrail) and, in standalone mode, database reachability.
+Reports overall health and, in a `dependencies` array, each backend component's own status. Standalone mode reports `postgres` and `stellar_rpc`; upstream mode reports only `sorotrail`, because it opens no database. Each dependency carries `healthy`, a `severity` of `fatal` (the read paths break without it) or `degraded` (some data is still served), and a sanitized `detail` when unhealthy. The existing top-level fields are unchanged, and `/readyz` returns `200`/`503` under the same conditions as before. Liveness (`/livez`) deliberately does not check dependencies.
 
 ### `GET /api/stats`
 Overview counters: total contracts seen, total events, last-updated ledger (standalone mode) or last-synced position (upstream mode).
@@ -39,6 +39,7 @@ A contract's events, newest-first.
 | `tx_hash` | Restrict to events from one transaction |
 | `topic` | Match by decoded topic (see build semantics) |
 | `from_ledger` / `to_ledger` | Inclusive ledger bounds |
+| `from_time` / `to_time` | Inclusive RFC 3339 bounds on `ledger_closed_at` (on-chain close time, not ingest time) |
 | `limit` / `cursor` | Pagination |
 
 ```bash
@@ -90,6 +91,21 @@ Aggregate event counts into contiguous half-open `[start, end)` time buckets ove
 ```bash
 curl 'http://localhost:8080/api/events/buckets?from=2024-01-01T00:00:00Z&to=2024-01-01T06:00:00Z&interval=1h&type=contract'
 ```
+
+## Time filters
+
+`from_time` and `to_time` are accepted anywhere a ledger range is: `GET /api/events`, `GET /api/contracts/{id}/events` and the event stream. Both bounds are inclusive and filter on `ledger_closed_at`, the ledger's on-chain close time. This is deliberately not `created_at`, which is when SoroVista ingested the row: filtering on ingest time would give different answers on a backfilled instance than on a live one.
+
+- The wire format is RFC 3339 with a time and offset, for example `2024-01-01T02:00:00+02:00`. Offsets are honoured. A date without a time is rejected rather than interpreted as midnight.
+- A malformed or reversed bound returns `400` naming the parameter.
+- When ledger and time bounds are both supplied they intersect: an event must satisfy every bound.
+- In upstream mode the time filter is applied after SoroTrail's ascending scan, so a page may be shorter (or empty with a `next_cursor`) when the range lies outside the newest events scanned. Keep paging until `next_cursor` is absent.
+
+## Conditional requests
+
+`GET /api/contracts`, `GET /api/events`, `GET /api/contracts/{id}/events` and `GET /api/events/{id}` return a strong `ETag`. Send it back in `If-None-Match`; when it matches, the response is `304 Not Modified` with no body and the `ETag` repeated. A non-matching or absent header returns the full `200` response as before.
+
+The tag is derived from the matched route, the query parameters and a fingerprint of the returned rows (event IDs and paging state, or the contracts' aggregate fields), not from hashing the serialised body. Any new event that changes a response changes the tag, so a stale `304` cannot hide new data. Two different filters cannot share a tag. `Cache-Control` and `Last-Modified` are not set.
 
 ## Pagination
 

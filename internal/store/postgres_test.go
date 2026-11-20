@@ -229,6 +229,30 @@ func TestQueryEventsFilters(t *testing.T) {
 		}
 	})
 
+	t.Run("by inclusive time range", func(t *testing.T) {
+		from := time.Unix(1700000105, 0).UTC()
+		to := time.Unix(1700000110, 0).UTC()
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{FromTime: from, ToTime: to})
+		require.NoError(t, err)
+		require.Len(t, got, 3, "ledger 105 carries two events and ledger 110 one")
+		for _, e := range got {
+			assert.False(t, e.LedgerClosedAt.Before(from))
+			assert.False(t, e.LedgerClosedAt.After(to))
+		}
+	})
+
+	t.Run("time and ledger bounds intersect", func(t *testing.T) {
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{
+			FromTime: time.Unix(1700000105, 0).UTC(),
+			ToLedger: 105,
+		})
+		require.NoError(t, err)
+		assert.Len(t, got, 2)
+		for _, e := range got {
+			assert.Equal(t, int64(105), e.Ledger)
+		}
+	})
+
 	t.Run("by topic containment", func(t *testing.T) {
 		got, _, err := pg.QueryEvents(ctx, source.EventQuery{
 			Topic: json.RawMessage(`{"symbol":"mint"}`),

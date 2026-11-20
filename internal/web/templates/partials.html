@@ -92,6 +92,18 @@
     <label for="f-to">To ledger</label>
     <input id="f-to" type="number" name="to_ledger" value="{{.Filters.ToLedger}}" min="1" size="10">
   </div>
+  <div>
+    <label for="f-from-time">From time</label>
+    <input id="f-from-time" type="text" name="from_time" value="{{.Filters.FromTime}}"
+           placeholder="2024-01-01T00:00:00Z" size="22"
+           title="Inclusive on-chain close time (RFC3339, with a time)">
+  </div>
+  <div>
+    <label for="f-to-time">To time</label>
+    <input id="f-to-time" type="text" name="to_time" value="{{.Filters.ToTime}}"
+           placeholder="2024-01-02T00:00:00Z" size="22"
+           title="Inclusive on-chain close time (RFC3339, with a time)">
+  </div>
   <button type="submit">Filter</button>
 </form>
 {{end}}

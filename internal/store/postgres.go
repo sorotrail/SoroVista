@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/tracing"
 )
 
 // Postgres implements Store on a pgx connection pool.
@@ -24,7 +25,21 @@ type Postgres struct {
 // returning, so a bad DATABASE_URL fails at startup rather than on first
 // request.
 func NewPostgres(ctx context.Context, databaseURL string) (*Postgres, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	return NewPostgresWithTracer(ctx, databaseURL, nil)
+}
+
+// NewPostgresWithTracer is NewPostgres with OpenTelemetry query tracing. A nil
+// or disabled tracer changes nothing, so callers need no conditional.
+func NewPostgresWithTracer(ctx context.Context, databaseURL string, tracer *tracing.Tracer) (*Postgres, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing database url: %w", err)
+	}
+	if tracer.Enabled() {
+		config.ConnConfig.Tracer = queryTracer{tracer: tracer}
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to postgres: %w", err)
 	}
@@ -142,6 +157,16 @@ func (p *Postgres) QueryEvents(ctx context.Context, q source.EventQuery) ([]sour
 	}
 	if q.ToLedger > 0 {
 		where = append(where, "ledger <= "+arg(q.ToLedger))
+	}
+	// Time bounds apply to ledger_closed_at, the on-chain close time. They are
+	// inclusive at both ends and combine with the ledger bounds as an
+	// intersection (plain AND), for the same reason both filters exist: a
+	// caller narrowing by ledger and by wall-clock time means both.
+	if !q.FromTime.IsZero() {
+		where = append(where, "ledger_closed_at >= "+arg(q.FromTime.UTC()))
+	}
+	if !q.ToTime.IsZero() {
+		where = append(where, "ledger_closed_at <= "+arg(q.ToTime.UTC()))
 	}
 	if q.Cursor != "" {
 		where = append(where, "id < "+arg(q.Cursor))

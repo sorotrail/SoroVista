@@ -72,6 +72,12 @@
             "$ref": "#/components/parameters/ToLedger"
           },
           {
+            "$ref": "#/components/parameters/FromTime"
+          },
+          {
+            "$ref": "#/components/parameters/ToTime"
+          },
+          {
             "$ref": "#/components/parameters/Cursor"
           },
           {
@@ -154,6 +160,12 @@
             "$ref": "#/components/parameters/ToLedger"
           },
           {
+            "$ref": "#/components/parameters/FromTime"
+          },
+          {
+            "$ref": "#/components/parameters/ToTime"
+          },
+          {
             "$ref": "#/components/parameters/Cursor"
           },
           {
@@ -210,6 +222,12 @@
           },
           {
             "$ref": "#/components/parameters/ToLedger"
+          },
+          {
+            "$ref": "#/components/parameters/FromTime"
+          },
+          {
+            "$ref": "#/components/parameters/ToTime"
           },
           {
             "$ref": "#/components/parameters/TxHash"
@@ -526,6 +544,24 @@
           "minimum": 0
         },
         "description": "Inclusive upper ledger bound"
+      },
+      "FromTime": {
+        "name": "from_time",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Inclusive lower RFC3339 bound on ledger_closed_at (on-chain close time, not created_at). A date without a time is rejected. Intersects with ledger bounds."
+      },
+      "ToTime": {
+        "name": "to_time",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Inclusive upper RFC3339 bound on ledger_closed_at (on-chain close time, not created_at). A date without a time is rejected. Intersects with ledger bounds."
       },
       "TxHash": {
         "name": "tx_hash",

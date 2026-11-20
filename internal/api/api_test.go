@@ -129,6 +129,26 @@ func TestListEventsParsesFilters(t *testing.T) {
 	assert.JSONEq(t, `{"symbol":"transfer"}`, string(q.Topic))
 }
 
+func TestListEventsParsesTimeRange(t *testing.T) {
+	src := &fakeSource{events: source.EventPage{}}
+	target := "/api/events?from_time=2024-01-01T00:00:00%2B02:00&to_time=2024-01-01T12:00:00Z"
+	rec := do(t, testServer(src), target)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	q := src.lastEventQuery
+	assert.Equal(t, time.Date(2023, 12, 31, 22, 0, 0, 0, time.UTC), q.FromTime,
+		"an explicit offset must be honoured, not assumed to be UTC")
+	assert.Equal(t, time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), q.ToTime)
+}
+
+func TestListEventsTimeRangeIsOptional(t *testing.T) {
+	src := &fakeSource{events: source.EventPage{}}
+	rec := do(t, testServer(src), "/api/events")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, src.lastEventQuery.FromTime.IsZero())
+	assert.True(t, src.lastEventQuery.ToTime.IsZero())
+}
+
 func TestListEventsAcceptsJSONTopic(t *testing.T) {
 	src := &fakeSource{events: source.EventPage{}}
 	rec := do(t, testServer(src), `/api/events?topic=%7B%22address%22%3A%22GABC%22%7D`)
@@ -147,6 +167,9 @@ func TestListEventsRejectsBadInput(t *testing.T) {
 		{"negative ledger", "/api/events?from_ledger=-1", "from_ledger must be a positive integer"},
 		{"non-numeric ledger", "/api/events?to_ledger=abc", "to_ledger must be a positive integer"},
 		{"inverted range", "/api/events?from_ledger=200&to_ledger=100", "is after to_ledger"},
+		{"malformed from_time", "/api/events?from_time=yesterday", "from_time must be a valid RFC3339 timestamp"},
+		{"date without a time", "/api/events?to_time=2024-01-01", "to_time must be a valid RFC3339 timestamp"},
+		{"inverted time range", "/api/events?from_time=2024-01-02T00:00:00Z&to_time=2024-01-01T00:00:00Z", "is after to_time"},
 		{"limit too large", "/api/events?limit=100000", "limit must be an integer"},
 		{"limit zero", "/api/events?limit=0", "limit must be an integer"},
 	}

@@ -263,6 +263,49 @@ func TestListEventsRespectsLedgerBounds(t *testing.T) {
 	assert.Equal(t, int64(1060), page.Events[0].Ledger)
 }
 
+func TestListEventsFiltersByTime(t *testing.T) {
+	events := makeEvents(10, 1000, "CABC")
+	// makeEvents stamps ledger L at 1700000000+L, one second apart.
+	base := time.Unix(1700001000, 0).UTC()
+	src := newTestSource(newFakeIndexer(events))
+	ctx := context.Background()
+
+	t.Run("inclusive boundaries at both ends", func(t *testing.T) {
+		page, err := src.ListEvents(ctx, source.EventQuery{
+			FromTime: base.Add(2 * time.Second),
+			ToTime:   base.Add(4 * time.Second),
+			Limit:    50,
+		})
+		require.NoError(t, err)
+		require.Len(t, page.Events, 3, "events at both bounds are included")
+		assert.Equal(t, int64(1004), page.Events[0].Ledger)
+		assert.Equal(t, int64(1002), page.Events[2].Ledger)
+	})
+
+	t.Run("empty range returns no events", func(t *testing.T) {
+		page, err := src.ListEvents(ctx, source.EventQuery{
+			FromTime: base.Add(24 * time.Hour),
+			ToTime:   base.Add(25 * time.Hour),
+		})
+		require.NoError(t, err)
+		assert.Empty(t, page.Events)
+	})
+
+	t.Run("combines with a ledger bound by intersection", func(t *testing.T) {
+		page, err := src.ListEvents(ctx, source.EventQuery{
+			FromLedger: 1003,
+			ToTime:     base.Add(5 * time.Second),
+			Limit:      50,
+		})
+		require.NoError(t, err)
+		require.Len(t, page.Events, 3, "ledgers 1003..1005, all at or before the time bound")
+		for _, e := range page.Events {
+			assert.GreaterOrEqual(t, e.Ledger, int64(1003))
+			assert.False(t, e.LedgerClosedAt.After(base.Add(5*time.Second)))
+		}
+	})
+}
+
 func TestListEventsFiltersByContract(t *testing.T) {
 	events := append(makeEvents(20, 1000, "CABC"), makeEvents(20, 1000, "CXYZ")...)
 	// Give the second contract distinct IDs so both sets coexist.
@@ -471,6 +514,13 @@ func TestStatusReportsHealth(t *testing.T) {
 		assert.True(t, st.Healthy)
 		assert.Equal(t, int64(1004), st.LatestLedger)
 		assert.NotEmpty(t, st.RetentionNote)
+
+		// Upstream mode has no database, so the only dependency reported is
+		// the indexer, and it is fatal: nothing is served without it.
+		require.Len(t, st.Dependencies, 1, "upstream mode must not report a database")
+		assert.Equal(t, "sorotrail", st.Dependencies[0].Name)
+		assert.True(t, st.Dependencies[0].Healthy)
+		assert.Equal(t, source.DependencyFatal, st.Dependencies[0].Severity)
 	})
 
 	t.Run("unreachable indexer is unhealthy, not an error", func(t *testing.T) {
@@ -481,6 +531,12 @@ func TestStatusReportsHealth(t *testing.T) {
 		st := src.Status(context.Background())
 		assert.False(t, st.Healthy)
 		assert.Contains(t, st.Detail, "connection refused")
+
+		require.Len(t, st.Dependencies, 1)
+		assert.Equal(t, "sorotrail", st.Dependencies[0].Name)
+		assert.False(t, st.Dependencies[0].Healthy)
+		assert.Equal(t, source.DependencyFatal, st.Dependencies[0].Severity)
+		assert.Contains(t, st.Dependencies[0].Detail, "connection refused")
 	})
 }
 
