@@ -168,10 +168,12 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 		// Verify the endpoint really is the configured network before
 		// ingesting anything: a mainnet endpoint behind testnet config makes
 		// the explorer quietly show the wrong chain's activity.
-		if net, err := client.GetNetwork(ctx); err != nil {
-			log.Warn("could not verify network passphrase", "error", err)
-		} else if err := config.VerifyPassphrase(cfg.Network.Passphrase, net.Passphrase); err != nil {
-			return nil, nil, nil, err
+		if err := config.StartupNetworkCheck(ctx, client, cfg.Network.Passphrase); err != nil {
+			if errors.Is(err, config.ErrNetworkUnverifiable) {
+				log.Warn("could not verify network passphrase", "error", err)
+			} else {
+				return nil, nil, nil, err
+			}
 		}
 		log.Info("network verified", "network", cfg.Network.Name, "rpc_url", cfg.RPCURL)
 

@@ -1,11 +1,56 @@
 package config
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/sorotrail/sorovista/internal/rpc"
 )
+
+// newRPCNode stands up a fake Stellar RPC node whose every request gets body
+// and returns it as the node's response.
+func newRPCNode(t *testing.T, body string) *rpc.HTTPClient {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return rpc.NewHTTPClient(srv.URL, srv.Client())
+}
+
+func TestStartupNetworkCheck(t *testing.T) {
+	t.Run("matching passphrase proceeds", func(t *testing.T) {
+		node := newRPCNode(t, `{"jsonrpc":"2.0","id":1,"result":{"passphrase":"`+rpc.PassphraseTestnet+`"}}`)
+		err := StartupNetworkCheck(context.Background(), node, rpc.PassphraseTestnet)
+		if err != nil {
+			t.Fatalf("matching passphrase should proceed, got %v", err)
+		}
+	})
+
+	t.Run("mismatched passphrase fails", func(t *testing.T) {
+		node := newRPCNode(t, `{"jsonrpc":"2.0","id":1,"result":{"passphrase":"`+rpc.PassphraseMainnet+`"}}`)
+		err := StartupNetworkCheck(context.Background(), node, rpc.PassphraseTestnet)
+		if err == nil || !strings.Contains(err.Error(), "network mismatch") {
+			t.Fatalf("mainnet endpoint behind testnet config must fail naming both, got %v", err)
+		}
+	})
+
+	t.Run("unreachable endpoint proceeds with a warning", func(t *testing.T) {
+		// The endpoint refuses getNetwork; the decision is deliberately
+		// non-fatal so the poller surfaces the outage while SoroVista
+		// starts — the warning is main's to log.
+		node := newRPCNode(t, `{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"getNetwork is not supported"}}`)
+		err := StartupNetworkCheck(context.Background(), node, rpc.PassphraseTestnet)
+		if !errors.Is(err, ErrNetworkUnverifiable) {
+			t.Fatalf("expected ErrNetworkUnverifiable so startup proceeds with a warning, got %v", err)
+		}
+	})
+}
 
 func TestParseNetwork(t *testing.T) {
 	tests := []struct {

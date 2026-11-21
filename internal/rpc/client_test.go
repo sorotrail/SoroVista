@@ -206,6 +206,49 @@ func TestGetHealth(t *testing.T) {
 	assert.Equal(t, uint32(90), got.LedgerRetentionWindow)
 }
 
+func TestGetNetworkParsesResult(t *testing.T) {
+	client, captured := fakeNode(t, func(capturedRequest) string {
+		return `{"jsonrpc":"2.0","id":1,"result":{
+			"passphrase":"Test SDF Network ; September 2015",
+			"friendlierUrl":"https://www.stellar.org/testnet",
+			"protocolVersion":21}}`
+	})
+
+	got, err := client.GetNetwork(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, PassphraseTestnet, got.Passphrase)
+	assert.Equal(t, "https://www.stellar.org/testnet", got.FriendlierURL)
+	assert.Equal(t, 21, got.ProtocolVersion)
+
+	// The client should have asked for the network up front.
+	require.Len(t, *captured, 1)
+	assert.Equal(t, "getNetwork", (*captured)[0].Method)
+}
+
+func TestGetNetworkSurfacesRPCError(t *testing.T) {
+	client, _ := fakeNode(t, func(capturedRequest) string {
+		return `{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"getNetwork is not supported"}}`
+	})
+
+	_, err := client.GetNetwork(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "getNetwork is not supported")
+}
+
+func TestGetNetworkRejectsMalformedBody(t *testing.T) {
+	// A malformed body must surface as an error, not a zero-value Network
+	// with an empty passphrase that reads as success.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("this is not json"))
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := NewHTTPClient(srv.URL, srv.Client()).GetNetwork(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decoding getNetwork response")
+}
+
 func TestCallRejectsNonOKStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream is down", http.StatusBadGateway)
