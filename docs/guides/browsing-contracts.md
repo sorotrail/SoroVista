@@ -13,6 +13,26 @@ Visit `http://localhost:8080` (or `/contracts`) to see every known contract, eac
 
 The list is paginated and searchable by contract ID — paste a full or partial `C...` address into the search box to jump to it.
 
+The same list is available as JSON:
+
+```bash
+curl 'http://localhost:8080/api/contracts?limit=1'
+```
+
+```json
+{
+  "contracts": [
+    {
+      "id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "event_count": 128,
+      "first_ledger": 1234567,
+      "last_ledger": 1234999,
+      "last_activity": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
 ## The contract detail page
 
 Clicking a contract opens its event history: every event it has emitted, newest-first, with:
@@ -27,6 +47,14 @@ From here you can filter by event type or ledger range — see [Searching and fi
 ## Finding a contract you don't have the ID for
 
 If you know roughly what you're looking for but not the exact contract ID, the global search accepts partial matches on contract ID. There's no name-based search in the MVP (SoroVista doesn't resolve contract metadata like token names) — you need the `C...` address. If you're coming from a wallet or another explorer, copy the address from there.
+
+Pass a partial ID as `search` to narrow the list:
+
+```bash
+curl 'http://localhost:8080/api/contracts?search=CDLZ&limit=10'
+```
+
+Matching is a case-insensitive substring test on the contract ID, so `CDLZ` returns every contract whose address contains those characters. In the UI, type the same fragment into the search box on `/contracts` and submit.
 
 ## What "seen" means
 
