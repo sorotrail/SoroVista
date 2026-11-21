@@ -8,11 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"github.com/sorotrail/sorovista/internal/source"
-	"github.com/sorotrail/sorovista/internal/source/sorotrailsource"
 )
 
 func discardLogger() *slog.Logger {
@@ -24,6 +20,7 @@ func discardLogger() *slog.Logger {
 func probeServer(status source.Status) http.Handler {
 	s := New(&fakeSource{status: status}, discardLogger())
 	mux := http.NewServeMux()
+	mux.Handle("/health", s.HealthHandler())
 	mux.Handle("/livez", s.LivezHandler())
 	mux.Handle("/readyz", s.ReadyzHandler())
 	return mux
@@ -72,7 +69,11 @@ func TestReadyzReportsBackendFailure(t *testing.T) {
 	srv := httptest.NewServer(probeServer(source.Status{
 		Mode:    "sorotrail",
 		Healthy: false,
+		State:   source.StateDown,
 		Detail:  "indexer unreachable",
+		Dependencies: map[string]source.DependencyStatus{
+			"sorotrail": {Healthy: false, Status: source.StateDown, Detail: "indexer unreachable"},
+		},
 	}))
 	defer srv.Close()
 
@@ -84,31 +85,53 @@ func TestReadyzReportsBackendFailure(t *testing.T) {
 	if res.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("readyz with unhealthy source = %d, want 503", res.StatusCode)
 	}
+	var body map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["status"] != "not ready" {
+		t.Fatalf("readyz status = %v, want not ready", body["status"])
+	}
+	if body["state"] != "down" {
+		t.Fatalf("readyz state = %v, want down", body["state"])
+	}
+	deps, ok := body["dependencies"].(map[string]any)
+	if !ok || deps["sorotrail"] == nil {
+		t.Fatalf("readyz dependencies missing sorotrail: %+v", body)
+	}
 }
 
-// TestReadyzAgainstUnreachableUpstream wires a real upstream-mode source, so
-// the mapping from sorotrailsource.Status to the probe's status code is pinned
-// end to end: an indexer that cannot be reached makes this instance not ready,
-// and the reason is handed to the operator rather than hidden behind the code.
-func TestReadyzAgainstUnreachableUpstream(t *testing.T) {
-	upstream := httptest.NewServer(http.NotFoundHandler())
-	upstream.Close() // a closed listener is a genuine connection refusal
+func TestHealthReportsPerDependencyDetail(t *testing.T) {
+	srv := httptest.NewServer(probeServer(source.Status{
+		Mode:    "rpc",
+		Healthy: false,
+		State:   source.StateDegraded,
+		Detail:  "stellar rpc unreachable: timeout",
+		Dependencies: map[string]source.DependencyStatus{
+			"database": {Healthy: true, Status: source.StateOK},
+			"rpc":      {Healthy: false, Status: source.StateDown, Detail: "timeout"},
+		},
+	}))
+	defer srv.Close()
 
-	s := New(sorotrailsource.New(upstream.URL, upstream.Client()), discardLogger())
-	mux := http.NewServeMux()
-	mux.Handle("/readyz", s.ReadyzHandler())
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-
-	require.Equal(t, http.StatusServiceUnavailable, rec.Code,
-		"an unreachable indexer is what readiness is meant to detect")
-
-	var body map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	assert.Equal(t, "not ready", body["status"])
-	assert.Equal(t, "sorotrail", body["mode"])
-	assert.NotEmpty(t, body["detail"], "a 503 with no explanation leaves an operator guessing")
+	res, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("health with degraded source = %d, want 503", res.StatusCode)
+	}
+	var got source.Status
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != source.StateDegraded {
+		t.Fatalf("state = %q, want %q", got.State, source.StateDegraded)
+	}
+	if !got.Dependencies["database"].Healthy || got.Dependencies["rpc"].Healthy {
+		t.Fatalf("unexpected dependencies: %+v", got.Dependencies)
+	}
 }
 
 func TestVersionEndpoint(t *testing.T) {

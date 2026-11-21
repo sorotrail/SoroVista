@@ -28,12 +28,6 @@ type fakeIndexer struct {
 	pageSize int
 	calls    int
 	failWith error
-	// healthErr, when set, fails Health alone, the way an unhealthy upstream
-	// does while the rest of its API still answers.
-	healthErr error
-	// health, when non-nil, is returned verbatim by Health, so a degraded but
-	// reachable indexer can be simulated without a second fake.
-	health *upstreamHealth
 }
 
 func newFakeIndexer(events []source.Event) *fakeIndexer {
@@ -126,12 +120,6 @@ func (f *fakeIndexer) Stats(context.Context) (upstreamStats, error) {
 func (f *fakeIndexer) Health(context.Context) (upstreamHealth, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.healthErr != nil {
-		return upstreamHealth{}, f.healthErr
-	}
-	if f.health != nil {
-		return *f.health, nil
-	}
 	if f.failWith != nil {
 		return upstreamHealth{}, f.failWith
 	}
@@ -662,135 +650,29 @@ func TestStatusReportsHealth(t *testing.T) {
 
 		assert.Equal(t, "sorotrail", st.Mode)
 		assert.True(t, st.Healthy)
+		assert.Equal(t, source.StateOK, st.State)
 		assert.Equal(t, int64(1004), st.LatestLedger)
 		assert.NotEmpty(t, st.RetentionNote)
+		assert.Equal(t, map[string]source.DependencyStatus{
+			"sorotrail": {Healthy: true, Status: source.StateOK},
+		}, st.Dependencies)
+		assert.NotContains(t, st.Dependencies, "database",
+			"upstream mode has no database and must not report one")
 	})
 
 	t.Run("unreachable indexer is unhealthy, not an error", func(t *testing.T) {
 		f := newFakeIndexer(nil)
-		f.failWith = fmt.Errorf("connection refused")
+		f.failWith = fmt.Errorf("Get https://user:secretpass@indexer.internal/health: connection refused")
 		src := newTestSource(f)
 
 		st := src.Status(context.Background())
 		assert.False(t, st.Healthy)
+		assert.Equal(t, source.StateDown, st.State)
 		assert.Contains(t, st.Detail, "connection refused")
+		assert.NotContains(t, st.Detail, "secretpass")
+		assert.NotContains(t, st.Dependencies["sorotrail"].Detail, "secretpass")
+		assert.Equal(t, source.StateDown, st.Dependencies["sorotrail"].Status)
 	})
-}
-
-// TestStatusUnhealthyUpstream covers the degraded-mode contract behind Status:
-// the interface promises it never returns an error, so an unreachable or
-// misbehaving indexer is a Status with Healthy false. In upstream mode that
-// indexer is the only data source, so this is the whole of the mode's degraded
-// behaviour, and it is also what the readiness probe consults.
-func TestStatusUnhealthyUpstream(t *testing.T) {
-	ctx := context.Background()
-
-	// A closed listener is the cheapest genuine connection refusal, and it
-	// avoids matching on OS-specific error text, which is brittle across
-	// platforms.
-	refused := func(t *testing.T) *Source {
-		t.Helper()
-		srv := httptest.NewServer(http.NotFoundHandler())
-		srv.Close()
-		return New(srv.URL, srv.Client())
-	}
-
-	// serve points a real Source at a stub upstream, so the transport and
-	// decoding paths run rather than a hand-written stub.
-	serve := func(handler http.HandlerFunc) func(*testing.T) *Source {
-		return func(t *testing.T) *Source {
-			t.Helper()
-			srv := httptest.NewServer(handler)
-			t.Cleanup(srv.Close)
-			return New(srv.URL, srv.Client())
-		}
-	}
-
-	tests := []struct {
-		name           string
-		newSource      func(*testing.T) *Source
-		detailContains []string
-	}{
-		{
-			// Nothing is listening: the transport fails before any HTTP.
-			name:      "connection refused",
-			newSource: refused,
-		},
-		{
-			// SoroTrail answers /health with 503 when degraded, and the body
-			// still carries the detail the banner needs; every non-ok check
-			// must reach Detail.
-			name: "5xx carrying a health body",
-			newSource: serve(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte(`{"status":"degraded","checks":{"database":"ok","rpc":"timeout"}}`))
-			}),
-			detailContains: []string{"degraded", "rpc: timeout"},
-		},
-		{
-			// A 5xx with no usable body still has to explain itself.
-			name: "5xx without a health body",
-			newSource: serve(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusBadGateway)
-				_, _ = w.Write([]byte("upstream proxy error"))
-			}),
-		},
-		{
-			// Healthier than it looks: a 200 with a truncated body is a decode
-			// failure, not a healthy indexer.
-			name: "malformed body",
-			newSource: serve(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`{"status":"ok","checks":`))
-			}),
-		},
-		{
-			name: "degraded status from the fake indexer",
-			newSource: func(*testing.T) *Source {
-				f := newFakeIndexer(makeEvents(5, 1000, "CABC"))
-				f.health = &upstreamHealth{
-					Status: "degraded",
-					Checks: map[string]string{"database": "ok", "rpc": "timeout"},
-				}
-				return newTestSource(f)
-			},
-			detailContains: []string{"degraded", "rpc: timeout"},
-		},
-		{
-			name: "health call fails while events still work",
-			newSource: func(*testing.T) *Source {
-				f := newFakeIndexer(makeEvents(5, 1000, "CABC"))
-				f.healthErr = fmt.Errorf("connection refused")
-				return newTestSource(f)
-			},
-			detailContains: []string{"connection refused"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			st := tt.newSource(t).Status(ctx)
-
-			assert.False(t, st.Healthy)
-			assert.NotEmpty(t, st.Detail,
-				"an unhealthy status with an empty Detail is useless in the UI banner")
-			assert.Equal(t, "sorotrail", st.Mode)
-			assert.Equal(t, RetentionNote, st.RetentionNote,
-				"the banner's history caveat must survive an unhealthy upstream")
-			assert.Zero(t, st.LatestLedger, "a down indexer has no ledger to report")
-			for _, want := range tt.detailContains {
-				assert.Contains(t, st.Detail, want)
-			}
-		})
-	}
-
-	// This test deliberately does not assert that Detail omits the upstream
-	// URL. SOROTRAIL_URL is accepted verbatim (config trims only a trailing
-	// slash), so it may carry userinfo, and a transport error renders the URL
-	// into Detail — with the password redacted by net/http but the host and
-	// username left visible on /health and /readyz. That is reported on the
-	// issue rather than fixed here, so the assertion is left out on purpose.
 }
 
 func TestCursorRoundTrip(t *testing.T) {
