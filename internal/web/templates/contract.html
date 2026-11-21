@@ -1,6 +1,10 @@
 {{define "content"}}
 {{$d := .Data}}
 <h1>Contract</h1>
+<div class="copy-control" data-full="{{$d.ContractID}}">
+  {{shorten $d.ContractID 6}}
+  <button class="copy-btn mono tiny" title="Copy full contract ID" aria-label="Copy contract ID">⋮</button>
+</div>
 <p class="mono" style="word-break: break-all;">{{$d.ContractID}}</p>
 
 <div class="stats">

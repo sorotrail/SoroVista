@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -207,6 +208,44 @@ func templateFuncs() template.FuncMap {
 		"join": strings.Join,
 		// add supports simple arithmetic in templates.
 		"add": func(a, b int) int { return a + b },
+		// relativeTime formats a time.Time as a relative string like "4m ago",
+		// "2h ago", "3d ago", or an absolute timestamp if the age is too large.
+		"relativeTime": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			now := time.Now().UTC()
+			age := now.Sub(t.UTC())
+			if age < 0 {
+				// t is in the future; show absolute time.
+				return t.UTC().Format("2006-01-02 15:04:05Z")
+			}
+			if age < 45*time.Second {
+				return "just now"
+			}
+			if age < 90*time.Second {
+				return "1m ago"
+			}
+			if age < 60*time.Minute {
+				return fmt.Sprintf("%.0fm ago", age.Minutes())
+			}
+			if age < 90*time.Minute {
+				return "1h ago"
+			}
+			if age < 24*time.Hour {
+				return fmt.Sprintf("%.0fh ago", age.Hours())
+			}
+			if age < 48*time.Hour {
+				return "1d ago"
+			}
+			if age < 30*24*time.Hour {
+				return fmt.Sprintf("%.0fd ago", age.Hours()/24)
+			}
+			if age < 90*24*time.Hour {
+				return "1mo ago"
+			}
+			return t.UTC().Format("2006-01-02 15:04:05Z")
+		},
 	}
 }
 
