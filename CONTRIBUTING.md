@@ -15,6 +15,7 @@ docker compose up -d postgres
 cp .env.example .env
 set -a; source .env; set +a
 make test      # unit tests, no database needed
+make test-race # unit tests under the Go data race detector
 make test-db   # everything, against the compose Postgres
 make run
 ```
