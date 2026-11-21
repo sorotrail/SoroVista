@@ -96,6 +96,7 @@ func newHTTPAPI(baseURL string, client *http.Client) *httpAPI {
 	return &httpAPI{baseURL: baseURL, http: client}
 }
 
+// Events fetches a single ascending page of events matching query q from SoroTrail.
 func (a *httpAPI) Events(ctx context.Context, q upstreamQuery) (upstreamPage, error) {
 	params := url.Values{}
 	if q.ContractID != "" {
