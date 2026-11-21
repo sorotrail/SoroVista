@@ -206,6 +206,54 @@ func TestGetHealth(t *testing.T) {
 	assert.Equal(t, uint32(90), got.LedgerRetentionWindow)
 }
 
+func TestGetNetwork(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		want     Network
+		wantErr  string
+	}{
+		{
+			name: "happy path",
+			response: `{"jsonrpc":"2.0","id":1,"result":{
+				"passphrase":"Test SDF Network ; September 2015",
+				"friendlierUrl":"https://horizon-testnet.stellar.org",
+				"protocolVersion":21}}`,
+			want: Network{
+				Passphrase:      "Test SDF Network ; September 2015",
+				FriendlierURL:   "https://horizon-testnet.stellar.org",
+				ProtocolVersion: 21,
+			},
+		},
+		{
+			name:     "node returns an error",
+			response: `{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"method not found"}}`,
+			wantErr:  "method not found",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, captured := fakeNode(t, func(req capturedRequest) string {
+				assert.Equal(t, "getNetwork", req.Method)
+				return tc.response
+			})
+
+			got, err := client.GetNetwork(context.Background())
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				assert.Equal(t, Network{}, got)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, got)
+			}
+
+			assert.Len(t, *captured, 1)
+		})
+	}
+}
+
 func TestCallRejectsNonOKStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream is down", http.StatusBadGateway)
