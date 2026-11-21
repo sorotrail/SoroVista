@@ -22,11 +22,11 @@
 
 * [REST API](reference/api.md)
 * [Data model](reference/data-model.md)
-* [Metrics](reference/metrics.md)
 
 ## Operations
 
 * [Deployment](operations/deployment.md)
+* [Deploying with systemd](operations/systemd.md)
 
 ## Community
 
