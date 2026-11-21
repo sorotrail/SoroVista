@@ -34,6 +34,17 @@ const (
 	// retains events for about 24h to 7d, so reaching further back than the
 	// node's own window simply yields nothing.
 	DefaultRetentionLedgers = 17280
+
+	// DefaultPoolMaxOpenConns is the default maximum number of open connections
+	// in the pgx connection pool. Matches pgxpool.DefaultMaxOpenConns.
+	DefaultPoolMaxOpenConns = 0 // 0 means use pgxpool default
+	// DefaultPoolMaxIdleConns is the default maximum number of idle connections
+	// in the pgx connection pool.
+	DefaultPoolMaxIdleConns = 0 // 0 means use pgxpool default
+	// DefaultPoolMaxConnLifetime is the default maximum connection lifetime.
+	DefaultPoolMaxConnLifetime = 0 // 0 means use pgxpool default
+	// DefaultPoolMaxConnIdleTime is the default maximum connection idle time.
+	DefaultPoolMaxConnIdleTime = 0 // 0 means use pgxpool default
 )
 
 // Config holds all runtime configuration. Every field maps to one environment
@@ -79,6 +90,23 @@ type Config struct {
 	HTTPAddr string
 	// LogLevel is the minimum slog level (debug, info, warn, error).
 	LogLevel slog.Level
+
+	// PoolMaxOpenConns is the maximum number of open connections to the
+	// Postgres database. If 0, pgxpool's default is used. Set this (along
+	// with PoolMaxIdleConns) to bound the pool size relative to your
+	// Postgres max_connections setting.
+	PoolMaxOpenConns uint32
+	// PoolMaxIdleConns is the maximum number of idle connections in the
+	// pgx connection pool. If 0, pgxpool's default is used.
+	PoolMaxIdleConns uint32
+	// PoolMaxConnLifetime is the maximum amount of time a connection may be
+	// reused. If 0, pgxpool's default is used. Connections older than this
+	// age will be closed and replaced.
+	PoolMaxConnLifetime time.Duration
+	// PoolMaxConnIdleTime is the maximum amount of time a connection may be
+	// idle. If 0, pgxpool's default is used. Connections older than this
+	// age will be closed.
+	PoolMaxConnIdleTime time.Duration
 }
 
 // UsesDatabase reports whether the selected mode needs Postgres. Upstream mode
@@ -103,6 +131,11 @@ func Load() (Config, error) {
 		RetentionLedgers: DefaultRetentionLedgers,
 		HTTPAddr:         getenv("HTTP_ADDR", DefaultHTTPAddr),
 		LogLevel:         slog.LevelInfo,
+		// Pool settings default to 0 (use pgxpool defaults).
+		PoolMaxOpenConns:    parseUintEnv("POOL_MAX_OPEN_CONNS", 0),
+		PoolMaxIdleConns:    parseUintEnv("POOL_MAX_IDLE_CONNS", 0),
+		PoolMaxConnLifetime: parseDurationEnv("POOL_MAX_CONN_LIFETIME", 0),
+		PoolMaxConnIdleTime: parseDurationEnv("POOL_MAX_CONN_IDLE_TIME", 0),
 	}
 
 	if v := os.Getenv("SOURCE_MODE"); v != "" {
@@ -189,6 +222,10 @@ func (c Config) validate() error {
 		if c.RPCURL == "" {
 			return fmt.Errorf("RPC_URL is required when SOURCE_MODE=%s", ModeRPC)
 		}
+		// Validate pool settings when using standalone mode.
+		if err := c.ValidatePoolSettings(); err != nil {
+			return err
+		}
 	case ModeSoroTrail:
 		if c.SoroTrailURL == "" {
 			return fmt.Errorf("SOROTRAIL_URL is required when SOURCE_MODE=%s (upstream mode reads from a SoroTrail indexer)", ModeSoroTrail)
@@ -202,6 +239,30 @@ func (c Config) validate() error {
 
 	if c.HTTPAddr == "" {
 		return fmt.Errorf("HTTP_ADDR must not be empty")
+	}
+	return nil
+}
+
+// ValidatePoolSettings checks that pool configuration values are consistent.
+// A maximum below the minimum, or a zero maximum when a minimum is set, is a
+// configuration error.
+func (c Config) ValidatePoolSettings() error {
+	// When PoolMaxOpenConns is set, it must be positive.
+	if c.PoolMaxOpenConns > 0 && c.PoolMaxOpenConns < 1 {
+		return fmt.Errorf("POOL_MAX_OPEN_CONNS %d must be positive when set", c.PoolMaxOpenConns)
+	}
+	// When both PoolMaxOpenConns and PoolMaxIdleConns are set, idle must not
+	// exceed the maximum.
+	if c.PoolMaxOpenConns > 0 && c.PoolMaxIdleConns > 0 && c.PoolMaxIdleConns > c.PoolMaxOpenConns {
+		return fmt.Errorf("POOL_MAX_IDLE_CONNS %d exceeds POOL_MAX_OPEN_CONNS %d", c.PoolMaxIdleConns, c.PoolMaxOpenConns)
+	}
+	// When PoolMaxConnLifetime is set, it must be positive.
+	if c.PoolMaxConnLifetime > 0 && c.PoolMaxConnLifetime <= 0 {
+		return fmt.Errorf("POOL_MAX_CONN_LIFETIME must be positive when set")
+	}
+	// When PoolMaxConnIdleTime is set, it must be positive.
+	if c.PoolMaxConnIdleTime > 0 && c.PoolMaxConnIdleTime <= 0 {
+		return fmt.Errorf("POOL_MAX_CONN_IDLE_TIME must be positive when set")
 	}
 	return nil
 }
@@ -234,4 +295,30 @@ func parseLevel(s string) (slog.Level, error) {
 	default:
 		return slog.LevelInfo, fmt.Errorf("invalid LOG_LEVEL %q (want debug, info, warn or error)", s)
 	}
+}
+
+// parseUintEnv reads an environment variable as uint32, returning the fallback
+// when the variable is unset or unparseable.
+func parseUintEnv(key string, fallback uint32) uint32 {
+	if v := os.Getenv(key); v != "" {
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return fallback
+		}
+		return uint32(n)
+	}
+	return fallback
+}
+
+// parseDurationEnv reads an environment variable as time.Duration, returning the
+// fallback when the variable is unset or unparseable.
+func parseDurationEnv(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fallback
+		}
+		return d
+	}
+	return fallback
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sorotrail/sorovista/internal/config"
 	"github.com/sorotrail/sorovista/internal/source"
 )
 
@@ -22,12 +23,37 @@ type Postgres struct {
 
 // NewPostgres connects to Postgres and verifies the connection before
 // returning, so a bad DATABASE_URL fails at startup rather than on first
-// request.
-func NewPostgres(ctx context.Context, databaseURL string) (*Postgres, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+// request. Pool settings from cfg are applied if non-zero.
+func NewPostgres(ctx context.Context, databaseURL string, cfg *config.Config) (*Postgres, error) {
+	// Parse the connection string to get the default pool config, then overlay
+	// operator‑provided settings on top of it so that zero values fall back to
+	// pgxpool's own defaults rather than overriding them with 0.
+	pc, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing postgres URL: %w", err)
+	}
+
+	// Apply operator‑provided pool settings when non-zero.
+	if cfg != nil {
+		if cfg.PoolMaxOpenConns > 0 {
+			pc.MaxConns = int32(cfg.PoolMaxOpenConns)
+		}
+		if cfg.PoolMaxIdleConns > 0 {
+			pc.MinIdleConns = int32(cfg.PoolMaxIdleConns)
+		}
+		if cfg.PoolMaxConnLifetime > 0 {
+			pc.MaxConnLifetime = cfg.PoolMaxConnLifetime
+		}
+		if cfg.PoolMaxConnIdleTime > 0 {
+			pc.MaxConnIdleTime = cfg.PoolMaxConnIdleTime
+		}
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to postgres: %w", err)
 	}
+
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("pinging postgres: %w", err)
@@ -424,6 +450,39 @@ func (p *Postgres) SaveIngestState(ctx context.Context, s IngestState) error {
 		s.LastLedger, s.LastCursor)
 	if err != nil {
 		return fmt.Errorf("saving ingest state: %w", err)
+	}
+	return nil
+}
+
+// GetContractIngestState reads the per-contract ingestion progress for one
+// watched contract. Returns an empty state when no row exists yet (cold start).
+func (p *Postgres) GetContractIngestState(ctx context.Context, contractID string) (ContractIngestState, error) {
+	var s ContractIngestState
+	row := p.pool.QueryRow(ctx,
+		`SELECT contract_id, last_ledger, last_cursor, updated_at FROM contract_ingest_state WHERE contract_id = $1`, contractID)
+	if err := row.Scan(&s.ContractID, &s.LastLedger, &s.LastCursor, &s.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// No per-contract state yet; return empty state so the caller
+			// can fall back to the global position or retention window.
+			return ContractIngestState{}, nil
+		}
+		return s, fmt.Errorf("loading contract ingest state for %s: %w", contractID, err)
+	}
+	return s, nil
+}
+
+// SaveContractIngestState records per-contract ingestion progress.
+func (p *Postgres) SaveContractIngestState(ctx context.Context, s ContractIngestState) error {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO contract_ingest_state (contract_id, last_ledger, last_cursor, updated_at)
+		VALUES ($1, $2, $3, now())
+		ON CONFLICT (contract_id) DO UPDATE
+		SET last_ledger = EXCLUDED.last_ledger,
+		    last_cursor = EXCLUDED.last_cursor,
+		    updated_at  = EXCLUDED.updated_at`,
+		s.ContractID, s.LastLedger, s.LastCursor)
+	if err != nil {
+		return fmt.Errorf("saving contract ingest state for %s: %w", s.ContractID, err)
 	}
 	return nil
 }

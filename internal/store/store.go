@@ -25,6 +25,17 @@ type IngestState struct {
 	UpdatedAt  time.Time
 }
 
+// ContractIngestState records the per-contract ingestion progress, so a
+// restart resumes from each contract's own cursor rather than from a single
+// global position. When WATCHED_CONTRACTS is empty, the global position
+// still seeds each contract's cursor (see resumption logic).
+type ContractIngestState struct {
+	ContractID string
+	LastLedger int64
+	LastCursor string
+	UpdatedAt  time.Time
+}
+
 // Store is the persistence boundary. The ingester and the standalone
 // EventSource depend on this interface, never on Postgres directly.
 //
@@ -53,6 +64,11 @@ type Store interface {
 
 	GetIngestState(ctx context.Context) (IngestState, error)
 	SaveIngestState(ctx context.Context, s IngestState) error
+
+	// Per-contract ingestion state. These are optional when
+	// WATCHED_CONTRACTS is empty; the global position still applies.
+	GetContractIngestState(ctx context.Context, contractID string) (ContractIngestState, error)
+	SaveContractIngestState(ctx context.Context, s ContractIngestState) error
 
 	Ping(ctx context.Context) error
 	Close()

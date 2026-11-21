@@ -30,7 +30,7 @@ func newTestStore(t *testing.T) *Postgres {
 	require.NoError(t, Migrate(databaseURL))
 
 	ctx := context.Background()
-	pg, err := NewPostgres(ctx, databaseURL)
+	pg, err := NewPostgres(ctx, databaseURL, nil)
 	require.NoError(t, err)
 	t.Cleanup(pg.Close)
 
