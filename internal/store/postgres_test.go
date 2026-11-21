@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,6 +14,54 @@ import (
 
 	"github.com/sorotrail/sorovista/internal/source"
 )
+
+// TestNewPostgresEdgeCases covers inputs that must fail fast, long before any
+// query runs: empty input, a malformed URL and a reachable-looking but dead
+// host. None of these need a database, so they run in the ordinary suite.
+func TestNewPostgresEdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T)
+		url     string
+		wantErr string
+	}{
+		{
+			name: "empty input fails at the ping",
+			// An empty URL falls back to the libpq defaults, which on a machine
+			// with a local database could connect successfully. Point the default
+			// host at a socket that cannot exist so the case is deterministic.
+			setup:   func(t *testing.T) { t.Setenv("PGHOST", filepath.Join(t.TempDir(), "no-postgres-socket")) },
+			url:     "",
+			wantErr: "pinging postgres",
+		},
+		{
+			name:    "malformed url fails at parse",
+			url:     "not-a-url",
+			wantErr: "connecting to postgres",
+		},
+		{
+			name:    "unreachable host fails at the ping",
+			url:     "postgres://sorovista:sorovista@127.0.0.1:1/sorovista?sslmode=disable&connect_timeout=1",
+			wantErr: "pinging postgres",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			pg, err := NewPostgres(ctx, tt.url)
+			require.Error(t, err, "a bad database URL must fail at startup")
+			assert.Nil(t, pg, "no pool should be returned alongside the error")
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
 
 // newTestStore connects to the database named by TEST_DATABASE_URL, applies
 // the migrations and truncates the tables. Without that variable the whole

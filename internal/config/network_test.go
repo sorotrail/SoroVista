@@ -66,14 +66,47 @@ func TestParseNetwork(t *testing.T) {
 }
 
 func TestVerifyPassphrase(t *testing.T) {
-	if err := VerifyPassphrase(rpc.PassphraseTestnet, rpc.PassphraseTestnet); err != nil {
-		t.Fatalf("matching passphrases should verify, got %v", err)
+	tests := []struct {
+		name       string
+		configured string
+		reported   string
+		wantErr    bool
+		contains   []string
+	}{
+		{"matching testnet passphrases verify", rpc.PassphraseTestnet, rpc.PassphraseTestnet, false, nil},
+		// Empty on either side means verification is skipped, not failed: the
+		// node or the config may simply not report a passphrase.
+		{"both empty skip verification", "", "", false, nil},
+		{"empty configured skips verification", "", rpc.PassphraseTestnet, false, nil},
+		{"empty reported skips verification", rpc.PassphraseTestnet, "", false, nil},
+		{"identical unknown passphrases verify", "custom-network", "custom-network", false, nil},
+		{"known network mismatch names both sides", rpc.PassphraseMainnet, rpc.PassphraseTestnet, true,
+			[]string{"network mismatch", "mainnet", "testnet"}},
+		{"unknown mismatch quotes both values", "custom-a", "custom-b", true,
+			[]string{"network mismatch", `"custom-a"`, `"custom-b"`}},
+		// Comparison is literal: a near-miss (here a trailing space) is still a
+		// mismatch, so a typo in NETWORK_PASSPHRASE cannot pass silently.
+		{"whitespace difference is a mismatch", rpc.PassphraseTestnet, rpc.PassphraseTestnet + " ", true,
+			[]string{"network mismatch", "testnet"}},
 	}
-	if err := VerifyPassphrase("", ""); err != nil {
-		t.Fatalf("empty passphrases skip verification, got %v", err)
-	}
-	err := VerifyPassphrase(rpc.PassphraseMainnet, rpc.PassphraseTestnet)
-	if err == nil || !strings.Contains(err.Error(), "network mismatch") {
-		t.Fatalf("mainnet config against testnet node must fail naming both, got %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := VerifyPassphrase(tt.configured, tt.reported)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("expected verification to pass, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected a network mismatch error, got nil")
+			}
+			for _, want := range tt.contains {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error %q should contain %q", err, want)
+				}
+			}
+		})
 	}
 }

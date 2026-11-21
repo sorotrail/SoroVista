@@ -254,6 +254,68 @@ func TestPollOnceDoesNotAdvanceOnStoreFailure(t *testing.T) {
 	assert.Zero(t, st.savedState().LastLedger)
 }
 
+// TestWithPublisherEdgeCases pins down the attachment semantics: attaching a
+// nil publisher is safe, re-attaching replaces rather than stacks, and a later
+// nil detaches whatever was attached before.
+func TestWithPublisherEdgeCases(t *testing.T) {
+	const eventID = "0000000100-0000000001"
+
+	tests := []struct {
+		name       string
+		attach     func(a, b *recordingPublisher) []EventPublisher
+		wantFirst  []string
+		wantSecond []string
+	}{
+		{
+			name:   "no publisher attached is safe",
+			attach: func(a, b *recordingPublisher) []EventPublisher { return nil },
+		},
+		{
+			name:   "nil publisher is accepted",
+			attach: func(a, b *recordingPublisher) []EventPublisher { return []EventPublisher{nil} },
+		},
+		{
+			name:       "one publisher receives each batch",
+			attach:     func(a, b *recordingPublisher) []EventPublisher { return []EventPublisher{a} },
+			wantFirst:  []string{eventID},
+			wantSecond: nil,
+		},
+		{
+			name:       "the last attached publisher wins",
+			attach:     func(a, b *recordingPublisher) []EventPublisher { return []EventPublisher{a, b} },
+			wantFirst:  nil,
+			wantSecond: []string{eventID},
+		},
+		{
+			name:   "nil detaches an existing publisher",
+			attach: func(a, b *recordingPublisher) []EventPublisher { return []EventPublisher{a, nil} },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &mockRPC{
+				latest: 100,
+				responses: []rpc.GetEventsResult{
+					{Events: []rpc.Event{event(eventID, 100, "CABC")}, LatestLedger: 100},
+				},
+			}
+			st := newMockStore()
+			first, second := &recordingPublisher{}, &recordingPublisher{}
+
+			ing := newTestIngester(client, st, Options{RetentionLedgers: 50})
+			for _, p := range tt.attach(first, second) {
+				assert.Same(t, ing, ing.WithPublisher(p), "WithPublisher should return the receiver for chaining")
+			}
+
+			require.NoError(t, ing.pollOnce(context.Background()))
+			assert.Equal(t, 1, st.storedCount(), "ingestion must proceed regardless of publisher attachment")
+			assert.Equal(t, tt.wantFirst, first.events)
+			assert.Equal(t, tt.wantSecond, second.events)
+		})
+	}
+}
+
 func TestRunStopsOnContextCancel(t *testing.T) {
 	client := &mockRPC{latest: 100}
 	st := newMockStore()
@@ -271,6 +333,79 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 		require.NoError(t, err, "a cancelled context is a clean shutdown, not a failure")
 	case <-time.After(5 * time.Second):
 		t.Fatal("ingester did not stop after its context was cancelled")
+	}
+}
+
+// TestRunEdgeCases exercises the loop's shutdown and retry behaviour: an
+// already-cancelled context must not poll at all, and a failed poll is retried
+// on the next tick instead of ending the run.
+func TestRunEdgeCases(t *testing.T) {
+	tests := []struct {
+		name            string
+		ctx             func() (context.Context, context.CancelFunc)
+		opts            Options
+		client          *mockRPC
+		wantStored      int
+		wantRetriedPoll bool
+	}{
+		{
+			name: "pre-cancelled context returns without polling",
+			ctx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			opts:   Options{RetentionLedgers: 50},
+			client: &mockRPC{latest: 100},
+		},
+		{
+			name: "transient poll errors are retried until events arrive",
+			ctx:  func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
+			opts: Options{PollInterval: time.Millisecond, RetentionLedgers: 50},
+			client: &mockRPC{
+				latest: 100,
+				errs:   []error{errors.New("transient node error")},
+				responses: []rpc.GetEventsResult{
+					{Events: []rpc.Event{event("0000000100-0000000001", 100, "CABC")}, LatestLedger: 100},
+				},
+			},
+			wantStored:      1,
+			wantRetriedPoll: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := newMockStore()
+			ing := newTestIngester(tt.client, st, tt.opts)
+
+			ctx, cancel := tt.ctx()
+			defer cancel()
+
+			done := make(chan error, 1)
+			go func() { done <- ing.Run(ctx) }()
+
+			if tt.wantStored > 0 {
+				require.Eventually(t, func() bool { return st.storedCount() >= tt.wantStored },
+					5*time.Second, time.Millisecond, "ingester never stored the event")
+			}
+			cancel()
+
+			select {
+			case err := <-done:
+				require.NoError(t, err, "a cancelled context is a clean shutdown, not a failure")
+			case <-time.After(5 * time.Second):
+				t.Fatal("Run did not stop after its context was cancelled")
+			}
+
+			assert.Equal(t, tt.wantStored, st.storedCount())
+			requests := tt.client.capturedRequests()
+			if tt.wantRetriedPoll {
+				assert.GreaterOrEqual(t, len(requests), 2, "the failed poll should be retried on the next tick")
+			} else {
+				assert.Empty(t, requests, "a pre-cancelled context must not reach the RPC")
+			}
+		})
 	}
 }
 
