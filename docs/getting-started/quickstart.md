@@ -35,8 +35,31 @@ Everything in the UI is also available as JSON:
 
 ```bash
 curl 'http://localhost:8080/api/contracts?limit=10'
-curl 'http://localhost:8080/api/contracts/CC.../events?limit=20'
-curl 'http://localhost:8080/api/events/<event-id>'
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events?limit=20'
+curl 'http://localhost:8080/api/events/0016880389704384512-0000000003'
+```
+
+**Example:** Fetch recent contracts as JSON:
+
+```bash
+curl 'http://localhost:8080/api/contracts?limit=1'
+```
+
+Sample response payload:
+
+```json
+{
+  "contracts": [
+    {
+      "id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "event_count": 42,
+      "first_ledger": 500000,
+      "last_ledger": 512000,
+      "last_activity": "2026-11-20T10:00:00Z"
+    }
+  ],
+  "next_cursor": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+}
 ```
 
 ## Want deeper history instead?

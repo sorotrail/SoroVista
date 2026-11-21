@@ -12,6 +12,12 @@ Every event is `contract`, `system`, or `diagnostic`. Most exploration is `contr
 
 Narrow to a window of activity using `from_ledger` / `to_ledger` — useful when you're investigating "what happened around ledger X" or comparing before/after a known event.
 
+**Example:** Filter a contract's events within a specific ledger window:
+
+```bash
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events?from_ledger=500000&to_ledger=510000'
+```
+
 ## Filter by topic
 
 Events are often filterable by their decoded topic — for example, only events whose first topic is `transfer`, or that involve a specific address in a later topic position. This is how you go from "everything this contract did" to "just the transfers."
@@ -20,12 +26,40 @@ Events are often filterable by their decoded topic — for example, only events 
 
 If you already have an event id (a TOID — you'll see these in event rows and in API responses), the global search accepts it directly and takes you to that event's full detail page.
 
+**Example:** Search for an event by its TOID in the search bar or fetch it directly via the API:
+
+```bash
+curl 'http://localhost:8080/api/events/0016880389704384512-0000000003'
+```
+
 ## Using the JSON API for the same queries
 
 Every filter available in the UI is available on `GET /api/contracts/{id}/events` as a query parameter, so you can script the same searches:
 
 ```bash
-curl 'http://localhost:8080/api/contracts/CC.../events?type=contract&from_ledger=500000&to_ledger=510000'
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events?type=contract&from_ledger=500000&to_ledger=510000'
+```
+
+Sample response payload:
+
+```json
+{
+  "events": [
+    {
+      "id": "0016880389704384512-0000000003",
+      "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "ledger": 505000,
+      "type": "contract",
+      "tx_hash": "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "in_successful_call": true,
+      "topics": [
+        {"symbol": "transfer"}
+      ],
+      "value": {"i128": "1000"}
+    }
+  ],
+  "next_cursor": "0016880389704384512-0000000003"
+}
 ```
 
 This is useful for pulling a filtered event set into your own tooling rather than clicking through pages.
