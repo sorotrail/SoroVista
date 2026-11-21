@@ -107,13 +107,81 @@ Aggregate event counts into contiguous half-open `[start, end)` time buckets ove
 | `topic` | Optional decoded topic filter (bare symbol or JSON object) |
 
 ```bash
-curl 'http://localhost:8080/api/events/buckets?from=2024-01-01T00:00:00Z&to=2024-01-01T06:00:00Z&interval=1h&type=contract'
+# Every event, optionally narrowed with contract_id
+curl 'http://localhost:8080/api/events/buckets?from=2026-08-02T00:00:00Z&to=2026-08-02T03:00:00Z&interval=1h&type=contract'
+
+# One contract's events; the contract ID comes from the path
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/buckets?from=2026-08-02T00:00:00Z&to=2026-08-02T03:00:00Z&interval=1h'
+```
+
+Both endpoints return the same `BucketSeries` shape. Each bucket is the number of matching events whose `ledger_closed_at` fell in that half-open slice, so the counts sum to `total_events` across the requested range. Quiet hours are present with `count: 0`, and `approximate` is `false` when the counts come from an exact standalone-mode aggregate.
+
+```json
+{
+  "interval": "1h",
+  "from": "2026-08-02T00:00:00Z",
+  "to": "2026-08-02T03:00:00Z",
+  "total_events": 42,
+  "buckets": [
+    { "start": "2026-08-02T00:00:00Z", "end": "2026-08-02T01:00:00Z", "count": 17 },
+    { "start": "2026-08-02T01:00:00Z", "end": "2026-08-02T02:00:00Z", "count": 0 },
+    { "start": "2026-08-02T02:00:00Z", "end": "2026-08-02T03:00:00Z", "count": 25 }
+  ],
+  "approximate": false
+}
 ```
 
 ## Pagination
 
-List responses include `next_cursor`; pass it back as `cursor` for the next page. A null `next_cursor` means you've reached the end. Treat the cursor as opaque.
+List responses include `next_cursor`; pass it back as `cursor` for the next page. An absent `next_cursor` means you've reached the end. Treat the cursor as opaque — its contents differ between standalone and upstream mode.
+
+`limit` defaults to `50` and accepts `1`–`200`; values outside that range are rejected with `400` rather than clamped.
+
+```bash
+# First page: the two newest events
+curl 'http://localhost:8080/api/events?limit=2'
+```
+
+Event objects are trimmed below to their paging-relevant fields; each is returned in full by the API.
+
+```json
+{
+  "events": [
+    { "id": "0016880389704384512-0000000003", "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC", "ledger": 3930272, "type": "contract" },
+    { "id": "0016880389704384512-0000000002", "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC", "ledger": 3930272, "type": "contract" }
+  ],
+  "next_cursor": "0016880389704384512-0000000002"
+}
+```
+
+Request the next page by passing that value back unchanged:
+
+```bash
+curl 'http://localhost:8080/api/events?limit=2&cursor=0016880389704384512-0000000002'
+```
+
+The same mechanism works on `GET /api/contracts` and `GET /api/contracts/{id}/events`; repeat until the response has no `next_cursor` field.
 
 ## Errors
 
 Errors return an envelope with an HTTP status matching the failure class — `400` for invalid input (naming the offending parameter), `404` for an unknown contract or event, `500` for server faults. In upstream mode, an unreachable SoroTrail instance surfaces as a `502`-class error rather than a silent empty result.
+
+The body carries a human-readable `error`, a stable `code` (the HTTP status text) and the request's `request_id`, which is also returned in the `X-Request-ID` header and logged server-side:
+
+```bash
+curl -i 'http://localhost:8080/api/contracts/not-a-contract/events'
+```
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+X-Request-ID: 3f9c1a7d2b8e4c60
+
+{
+  "error": "invalid contract ID \"not-a-contract\"",
+  "code": "Bad Request",
+  "request_id": "3f9c1a7d2b8e4c60"
+}
+```
+
+Branch on the status code (or `code`), show `error` to the user, and quote `request_id` in bug reports so the failure can be found in the logs. A `500` response deliberately returns a generic message such as `listing events failed` and keeps the underlying detail in the log only.
