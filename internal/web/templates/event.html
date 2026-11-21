@@ -39,7 +39,13 @@
   <dd>{{$e.Ledger}}</dd>
 
   <dt>Ledger closed</dt>
-  <dd>{{if $e.LedgerClosedAt.IsZero}}<span class="muted">not reported by this source</span>{{else}}{{$e.LedgerClosedAt.UTC.Format "2006-01-02 15:04:05Z"}}{{end}}</dd>
+  <dd>
+    {{if $e.LedgerClosedAt.IsZero}}
+      <span class="muted">not reported by this source</span>
+    {{else}}
+      <time title="{{$e.LedgerClosedAt.UTC.Format "2006-01-02 15:04:05Z"}}">{{relativeTime $e.LedgerClosedAt}}</time>
+    {{end}}
+  </dd>
 
   <dt>Transaction</dt>
   <dd class="mono">{{if $e.TxHash}}{{$e.TxHash}}{{else}}<span class="muted">unknown</span>{{end}}</dd>
@@ -51,7 +57,13 @@
   <dd>{{if $e.InSuccessfulCall}}yes{{else}}no{{end}}</dd>
 
   <dt>Indexed at</dt>
-  <dd>{{if $e.CreatedAt.IsZero}}<span class="muted">unknown</span>{{else}}{{$e.CreatedAt.UTC.Format "2006-01-02 15:04:05Z"}}{{end}}</dd>
+  <dd>
+    {{if $e.CreatedAt.IsZero}}
+      <span class="muted">unknown</span>
+    {{else}}
+      <time title="{{$e.CreatedAt.UTC.Format "2006-01-02 15:04:05Z"}}">{{relativeTime $e.CreatedAt}}</time>
+    {{end}}
+  </dd>
 </dl>
 
 <h2>Raw decoded values</h2>

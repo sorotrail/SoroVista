@@ -1,4 +1,12 @@
-// Package config loads SoroVista configuration from environment variables.
+// Package config loads SoroVista configuration from environment variables and
+// optionally a YAML configuration file. The environment always wins on any
+// conflict, keeping container deployments working and secrets overridable
+// without editing a file.
+//
+// The file path is configured via the CONFIG_FILE environment variable; if
+// unset, the default is "./config.yaml". A file that is present but malformed
+// is a startup failure naming the file and the problem; a missing file at the
+// default path is not an error.
 package config
 
 import (
@@ -9,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // SourceMode selects where SoroVista reads contract events from.
@@ -37,7 +47,14 @@ const (
 )
 
 // Config holds all runtime configuration. Every field maps to one environment
-// variable; see .env.example for the full list.
+// variable; see .env.example for the full list. A YAML configuration file may
+// also supply values; the environment always wins on any conflict, keeping
+// container deployments working and secrets overridable without editing a file.
+//
+// The file path is configured via the CONFIG_FILE environment variable; if
+// unset, the default is "./config.yaml". A file that is present but malformed
+// is a startup failure naming the file and the problem; a missing file at the
+// default path is not an error.
 type Config struct {
 	// SourceMode selects the EventSource implementation (rpc or sorotrail).
 	SourceMode SourceMode
@@ -79,32 +96,152 @@ type Config struct {
 	HTTPAddr string
 	// LogLevel is the minimum slog level (debug, info, warn, error).
 	LogLevel slog.Level
+
+	// ConfigFile is the path to the YAML configuration file loaded at
+	// startup. Set via the CONFIG_FILE environment variable.
+	ConfigFile string
 }
 
 // UsesDatabase reports whether the selected mode needs Postgres. Upstream mode
 // reads everything from SoroTrail, so main skips migrations and the pool.
 func (c Config) UsesDatabase() bool { return c.SourceMode == ModeRPC }
 
-// Load reads configuration from the environment and validates that the
-// variables required by the selected SOURCE_MODE are present.
-func Load() (Config, error) {
-	net, err := ParseNetwork(os.Getenv)
+// configFileValues holds the values parsed from a YAML configuration file.
+// Each field is omitted if empty (nil pointer) so that unset fields don't override
+// their environment defaults.
+type configFileValues struct {
+	SourceMode       *string            `yaml:"source_mode"`
+	Network          *networkFileValues `yaml:"network"`
+	RPCURL           *string            `yaml:"rpc_url"`
+	DatabaseURL      *string            `yaml:"database_url"`
+	PollInterval     *string            `yaml:"poll_interval"`
+	WatchedContracts *[]string          `yaml:"watched_contracts"`
+	StartLedger      *uint32            `yaml:"start_ledger"`
+	RetentionLedgers *uint32            `yaml:"retention_ledgers"`
+	SoroTrailURL     *string            `yaml:"sorotrail_url"`
+	CORSAllowedOrigins *[]string        `yaml:"cors_allowed_origins"`
+	HTTPAddr         *string            `yaml:"http_addr"`
+	LogLevel         *string            `yaml:"log_level"`
+	ConfigFile       *string            `yaml:"-"` // ignored
+}
+
+// networkFileValues holds the network-related values from a YAML config file.
+type networkFileValues struct {
+	Network    *string `yaml:"network"`
+	RPCURL     *string `yaml:"rpc_url"`
+	NetworkPassphrase *string `yaml:"network_passphrase"`
+}
+
+// loadConfigFile parses the YAML configuration file at the given path.
+// A missing file is not an error; it returns zero values.
+func loadConfigFile(path string) (configFileValues, error) {
+	// A missing file is not an error — return zero values.
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return configFileValues{}, nil
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, err
+		return configFileValues{}, fmt.Errorf("reading config file %q: %w", path, err)
 	}
 
+	var raw configFileValues
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return configFileValues{}, fmt.Errorf("parsing config file %q: %w", path, err)
+	}
+
+	return raw, nil
+}
+
+// newConfigFromFile creates a Config populated with defaults from a
+// configFileValues struct. Fields with nil pointers in the file struct are
+// left at their zero values, to be overridden by environment variables later.
+func newConfigFromFile(file configFileValues) Config {
 	cfg := Config{
-		SourceMode:       DefaultSourceMode,
-		Network:          net,
-		RPCURL:           net.RPCURL,
-		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		PollInterval:     DefaultPollInterval,
-		SoroTrailURL:     strings.TrimRight(os.Getenv("SOROTRAIL_URL"), "/"),
+		SourceMode:   DefaultSourceMode,
+		Network:      Network{}, // zero value
+		RPCURL:       DefaultRPCURL,
+		DatabaseURL:  "",
+		PollInterval: DefaultPollInterval,
+		SoroTrailURL: "",
 		RetentionLedgers: DefaultRetentionLedgers,
-		HTTPAddr:         getenv("HTTP_ADDR", DefaultHTTPAddr),
-		LogLevel:         slog.LevelInfo,
+		HTTPAddr:     DefaultHTTPAddr,
+		LogLevel:     slog.LevelInfo,
 	}
 
+	// Apply file values as defaults (will be overridden by env vars).
+	if file.SourceMode != nil {
+		cfg.SourceMode = SourceMode(*file.SourceMode)
+	}
+	if file.Network != nil {
+		if file.Network.RPCURL != nil {
+			cfg.RPCURL = *file.Network.RPCURL
+		}
+	}
+	if file.RPCURL != nil {
+		cfg.RPCURL = *file.RPCURL
+	}
+	if file.DatabaseURL != nil {
+		cfg.DatabaseURL = *file.DatabaseURL
+	}
+	if file.PollInterval != nil {
+		d, err := time.ParseDuration(*file.PollInterval)
+		if err == nil && d >= time.Second {
+			cfg.PollInterval = d
+		}
+	}
+	if file.WatchedContracts != nil {
+		cfg.WatchedContracts = *file.WatchedContracts
+	}
+	if file.StartLedger != nil {
+		cfg.StartLedger = *file.StartLedger
+	}
+	if file.RetentionLedgers != nil {
+		cfg.RetentionLedgers = *file.RetentionLedgers
+	}
+	if file.SoroTrailURL != nil {
+		cfg.SoroTrailURL = *file.SoroTrailURL
+	}
+	if file.CORSAllowedOrigins != nil {
+		cfg.CORSAllowedOrigins = *file.CORSAllowedOrigins
+	}
+	if file.HTTPAddr != nil {
+		cfg.HTTPAddr = *file.HTTPAddr
+	}
+	if file.LogLevel != nil {
+		lvl, err := parseLevel(*file.LogLevel)
+		if err == nil {
+			cfg.LogLevel = lvl
+		}
+	}
+
+	return cfg
+}
+
+// Load reads configuration from the environment and optionally a YAML
+// configuration file. The environment always wins on any conflict, keeping
+// container deployments working and secrets overridable without editing a file.
+//
+// The file path is configured via the CONFIG_FILE environment variable; if
+// unset, the default is "./config.yaml". A file that is present but malformed
+// is a startup failure naming the file and the problem; a missing file at the
+// default path is not an error.
+func Load() (Config, error) {
+	// --- Step 1: Load config file (if present) ---
+	cfgPath := strings.TrimRight(os.Getenv("CONFIG_FILE"), "/")
+	if cfgPath == "" {
+		cfgPath = "./config.yaml"
+	}
+
+	file, err := loadConfigFile(cfgPath)
+	if err != nil {
+		return Config{}, fmt.Errorf("config file %q: %w", cfgPath, err)
+	}
+
+	// --- Step 2: Create cfg from file values as defaults ---
+	cfg := newConfigFromFile(file)
+
+	// --- Step 3: Override with environment variables (env wins over file) ---
 	if v := os.Getenv("SOURCE_MODE"); v != "" {
 		switch SourceMode(strings.ToLower(v)) {
 		case ModeRPC:
@@ -114,6 +251,22 @@ func Load() (Config, error) {
 		default:
 			return cfg, fmt.Errorf("invalid SOURCE_MODE %q (want %q or %q)", v, ModeRPC, ModeSoroTrail)
 		}
+	}
+
+	if v := os.Getenv("NETWORK"); v != "" {
+		// ParseNetwork will handle the full network resolution, but we at
+		// least set the name so the default doesn't clobber a custom setting
+		// if ParseNetwork hasn't run yet. ParseNetwork will run later and
+		// fully resolve it.
+		cfg.Network.Name = strings.ToLower(v)
+	}
+
+	if v := os.Getenv("RPC_URL"); v != "" {
+		cfg.RPCURL = v
+	}
+
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		cfg.DatabaseURL = v
 	}
 
 	if v := os.Getenv("POLL_INTERVAL"); v != "" {
@@ -172,6 +325,48 @@ func Load() (Config, error) {
 		cfg.LogLevel = lvl
 	}
 
+	if v := os.Getenv("SOROTRAIL_URL"); v != "" {
+		cfg.SoroTrailURL = strings.TrimRight(v, "/")
+	}
+
+	if v := os.Getenv("HTTP_ADDR"); v != "" {
+		cfg.HTTPAddr = v
+	}
+
+	// --- Step 4: ParseNetwork resolves NETWORK, RPC_URL, NETWORK_PASSPHRASE ---
+	// We pass a custom getenv that checks the config file values first, then
+	// falls back to os.Getenv. This way file defaults are visible to
+	// ParseNetwork, but shell env vars still win (since we only use the file
+	// as fallback when the env var is not set).
+	net, err := ParseNetwork(func(key string) string {
+		// Check os.Getenv first (shell/env var wins)
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+		// Fall back to config file values
+		switch strings.ToLower(key) {
+		case "rpc_url":
+			if file.RPCURL != nil {
+				return *file.RPCURL
+			}
+		case "network_passphrase":
+			if file.Network != nil && file.Network.NetworkPassphrase != nil {
+				return *file.Network.NetworkPassphrase
+			}
+		case "network":
+			if file.Network != nil && file.Network.Network != nil {
+				return *file.Network.Network
+			}
+		}
+		return ""
+	})
+	if err != nil {
+		return cfg, fmt.Errorf("parsing network: %w", err)
+	}
+	cfg.Network = net
+	cfg.RPCURL = net.RPCURL
+
+	// --- Step 5: Validate ---
 	if err := cfg.validate(); err != nil {
 		return cfg, err
 	}
