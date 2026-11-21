@@ -151,6 +151,13 @@ func TestEventName(t *testing.T) {
 		{"empty first topic", `[{}]`, ""},
 		{"multi-key first topic is not a name", `[{"symbol":"a","string":"b"}]`, ""},
 		{"empty symbol is not a name", `[{"symbol":""}]`, ""},
+		// The name has to be a JSON string. A symbol field of another JSON type is a different
+		// ScVal shape, not a name: the wrapper has one key, but its value fails the type assertion.
+		{"symbol that is not a string", `[{"symbol":123}]`, ""},
+		// The whole field has to be an array of topics; an object is a different payload.
+		{"topics that are an object", `{"symbol":"transfer"}`, ""},
+		// An array whose first element is not an object cannot be unwrapped.
+		{"first topic is not an object", `["transfer"]`, ""},
 	}
 
 	for _, tt := range tests {
