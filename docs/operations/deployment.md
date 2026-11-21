@@ -41,9 +41,42 @@ This is the lighter deployment: one process, no database, no ingestion loop of i
 
 If you do run standalone mode, the same continuity consideration applies as any RPC-polling ingester: downtime beyond the RPC's retention window means a permanent gap in what SoroVista captured for that period. If continuous, gap-free history matters to you, prefer upstream mode against a SoroTrail instance that's already handling that concern.
 
+**Example:** Query `/api/stats` to verify the ingested ledger range and check for continuity:
+
+```bash
+curl http://localhost:8080/api/stats
+```
+
+Sample response payload:
+
+```json
+{
+  "total_events": 14200,
+  "contract_count": 85,
+  "first_ledger": 500000,
+  "last_ledger": 512000,
+  "approximate": false
+}
+```
+
 ## Sizing
 
 **Standalone mode:** light on compute; Postgres storage scales with how many contracts you watch and how long you run. **Upstream mode:** lighter still — no local storage growth at all, since SoroVista holds nothing beyond what it needs to render the current request.
+
+**Example:** Container resource limits specification in `docker-compose.yml`:
+
+```yaml
+services:
+  sorovista:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+```
 
 ## Upgrades
 
