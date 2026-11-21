@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/sorotrail/sorovista/internal/source"
@@ -56,7 +57,9 @@ func DetectTokenEvent(ev source.Event) *TokenInfo {
 	}
 	var value any
 	if len(ev.Value) > 0 {
-		if err := json.Unmarshal(ev.Value, &value); err != nil {
+		dec := json.NewDecoder(bytes.NewReader(ev.Value))
+		dec.UseNumber()
+		if err := dec.Decode(&value); err != nil {
 			return nil
 		}
 	}
@@ -116,29 +119,60 @@ func topicAddress(topic any) (string, bool) {
 	return "", false
 }
 
-// valueAmount extracts the i128 amount from a decoded event value. Wide
-// integers are decimal strings in the stored shape; small ones may arrive
-// as JSON numbers, formatted back to a decimal string so the annotation is
-// always a string a client can parse as a big integer.
+// amountKeys lists the integer value wrappers recognized as SEP-41 amounts,
+// checked in precedence order.
+var amountKeys = []string{"i128", "u128", "i64", "u64"}
+
+// valueAmount extracts an integer amount from a decoded event value. Wide
+// integers (i128, u128, i64, u64) arrive as either strings or JSON numbers.
+// Because the value is unmarshaled with UseNumber, JSON numbers arrive as
+// json.Number preserving their exact source digits without losing precision
+// through float64 or rendering in scientific notation.
 func valueAmount(value any) (string, bool) {
 	m, ok := value.(map[string]any)
 	if !ok {
 		return "", false
 	}
-	switch v := m["i128"].(type) {
-	case string:
-		return v, true
-	case float64:
-		return formatFloat(v), true
+	for _, k := range amountKeys {
+		v, exists := m[k]
+		if !exists {
+			continue
+		}
+		switch val := v.(type) {
+		case json.Number:
+			s := val.String()
+			if isInteger(s) {
+				return s, true
+			}
+		case string:
+			if isInteger(val) {
+				return val, true
+			}
+		}
 	}
 	return "", false
 }
 
-func formatFloat(f float64) string {
-	// Small i128s may arrive as JSON numbers; render back to decimal
-	// without exponent, matching the string form.
-	b, _ := json.Marshal(f)
-	return string(b)
+// isInteger reports whether s is a valid decimal integer: an optional leading
+// minus sign followed by one or more ASCII digits, excluding exponents and
+// decimal points.
+func isInteger(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	start := 0
+	if s[0] == '-' {
+		start = 1
+		if len(s) == 1 {
+			return false
+		}
+	}
+	for i := start; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // annotatedEvent is an event response with the optional SEP-41 reading
