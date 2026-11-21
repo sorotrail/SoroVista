@@ -137,6 +137,9 @@ startup with a message naming both, rather than failing later on a request.
 | `HTTP_ADDR` | `:8080` | both | Listen address for the UI and API. |
 | `LOG_LEVEL` | `info` | both | `debug` \| `info` \| `warn` \| `error`. |
 | `CORS_ALLOWED_ORIGINS` | empty | both | Browser Origins allowed to call the API cross-origin. Empty disables CORS. |
+| `RATE_LIMIT_RPS` | empty (off) | both | Sustained per-client requests/second for `/api`. Must be set with `RATE_LIMIT_BURST`; both empty disables rate limiting. |
+| `RATE_LIMIT_BURST` | empty (off) | both | Per-client instantaneous burst allowance. Must be set with `RATE_LIMIT_RPS`. |
+| `RATE_LIMIT_TRUSTED_PROXY` | `false` | both | Key the limiter on the first `X-Forwarded-For` entry. Only safe behind a proxy that overwrites the header. |
 | `NETWORK` | `testnet` | standalone | `testnet` \| `mainnet` \| `futurenet` \| `custom`. Selects the network preset (passphrase + public RPC). |
 | `RPC_URL` | per `NETWORK` | standalone | Stellar RPC endpoint; overrides the preset. |
 | `NETWORK_PASSPHRASE` | per `NETWORK` | standalone | Overrides the preset passphrase. Required with `NETWORK=custom`. |

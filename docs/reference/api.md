@@ -110,9 +110,76 @@ Aggregate event counts into contiguous half-open `[start, end)` time buckets ove
 curl 'http://localhost:8080/api/events/buckets?from=2024-01-01T00:00:00Z&to=2024-01-01T06:00:00Z&interval=1h&type=contract'
 ```
 
+## Export
+
+### `GET /api/events/export` and `GET /api/contracts/{id}/events/export`
+Stream matching events as CSV or NDJSON. The contract-scoped form fixes the contract; the global form accepts `contract_id` like the other event lists. Both accept the same filters as the JSON endpoints (`type`, `tx_hash`, `topic`, `from_ledger`, `to_ledger`, `cursor`), so an export selects exactly what a paged query would.
+
+**Format selection:** `format=csv` (default) or `format=ndjson`. Format is a query parameter rather than an `Accept` header because every other API option is already a query parameter, and a URL is easier to paste into a browser, `curl` or a spreadsheet import than content negotiation.
+
+```bash
+# One contract's history, ready to open in a spreadsheet
+curl -OJ 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events/export?format=csv'
+
+# Every transfer on the network, streamed into jq
+curl -sN 'http://localhost:8080/api/events/export?format=ndjson&topic=transfer' | jq -c '.id'
+```
+
+**Response:**
+- CSV is `text/csv; charset=utf-8` with an `attachment` `Content-Disposition` filename, so a browser downloads rather than renders it. There is a header row.
+- NDJSON is `application/x-ndjson`: one annotated event object per line, no enclosing array or commas. Each line has the same shape as a `GET /api/events` item (`token` included when detected).
+
+**CSV columns (stable):**
+
+| Column | Contents |
+|---|---|
+| `id` | Event TOID |
+| `contract_id` | Soroban contract strkey |
+| `ledger` | Ledger sequence |
+| `type` | `contract`, `system` or `diagnostic` |
+| `tx_hash` | Producing transaction hash |
+| `tx_index` | Transaction index within the ledger |
+| `op_index` | Operation index within the transaction |
+| `in_successful_call` | `true` or `false` |
+| `topics` | Decoded topics as a JSON array inside one cell |
+| `value` | Decoded value as JSON inside one cell |
+| `ledger_closed_at` | On-chain close time, RFC3339 (UTC) |
+| `created_at` | Ingest time, RFC3339 (UTC) |
+
+`topics` and `value` are JSON documents, not scalars, so they are written as JSON text inside the cell (e.g. `"[{""symbol"":""transfer""}]"`) and must be parsed by the consumer. Query them with a JSON-aware tool if the spreadsheet is not enough. An absent topics or value is an empty cell. Values are **not** prefixed to neutralise spreadsheet formula injection (`=`, `+`, `-`, `@`): contract events are data and rewriting them would corrupt legitimate values. The file is served as an attachment, but consumers importing untrusted contract data should apply their own sanitisation.
+
+**Streaming and bounds:**
+- Rows are written as they are read and flushed periodically; the server does not accumulate the result in memory.
+- A single export is capped at **100,000 rows**. Clients needing more should narrow the filters or page using the JSON API. `limit` is ignored (an export covers the full result); `cursor` is honoured to resume.
+- The write loop checks the request context, so a client that disconnects stops the work.
+- Once the first byte is sent the status code is committed. A backend failure or a client disconnect therefore ends the response with a **truncated file** — complete rows only, with no final marker. Treat a short CSV/NDJSON file as incomplete rather than corrupt.
+- **Upstream mode:** exports work against SoroTrail too, but that backend answers by scanning ledger windows rather than reading an index, so a large export costs many upstream requests. Prefer a ledger range or a contract scope for anything big.
+
 ## Pagination
 
 List responses include `next_cursor`; pass it back as `cursor` for the next page. A null `next_cursor` means you've reached the end. Treat the cursor as opaque.
+
+## Rate limiting
+
+Rate limiting is **off by default**. Set both `RATE_LIMIT_RPS` (sustained requests per second) and `RATE_LIMIT_BURST` (instantaneous allowance) to enable a per-client token bucket over `/api`. A partial pair is rejected at startup rather than guessed at.
+
+When a client exceeds its allowance the response is `429 Too Many Requests` with a `Retry-After` header in whole seconds and the usual JSON error envelope:
+
+```json
+{
+  "error": "rate limit exceeded; retry after 2 seconds",
+  "code": "Too Many Requests",
+  "request_id": "..."
+}
+```
+
+`Retry-After` comes from the limiter's actual token state, so it is the real wait until capacity returns rather than a fixed constant.
+
+**Key:** the socket's remote address. Behind a proxy, set `RATE_LIMIT_TRUSTED_PROXY=true` to key on the first `X-Forwarded-For` entry instead — only safe when the proxy overwrites that header, since a client can otherwise choose its own bucket.
+
+**Exempt:** `/health`, `/livez`, `/readyz`, `/metrics`, and the web UI (its htmx partials are ordinary page loads and a limit tuned for API clients must not lock out a browsing session). Only `/api` is limited.
+
+Rejections increment `sorovista_http_rate_limited_total`, so an operator can tell a tight limit from real abuse.
 
 ## Errors
 

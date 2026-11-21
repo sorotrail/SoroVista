@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Build
         run: go build ./...
       - name: Vet
@@ -52,6 +55,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Test (with Postgres integration tests)
         # pipefail keeps go test's exit status when its output is tee'd for the
         # coverage report below.
@@ -110,6 +116,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Fuzz golden deserializer
         run: go test -fuzz=FuzzGoldenDeserializer -fuzztime=10s ./pkg/fuzz
       - name: Fuzz template interpolation
@@ -124,6 +133,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.12.2

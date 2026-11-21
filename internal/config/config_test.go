@@ -240,6 +240,62 @@ func TestLoad(t *testing.T) {
 			wantErr: "invalid START_LEDGER",
 		},
 		{
+			name: "rate limiting is parsed with both halves",
+			env: map[string]string{
+				"DATABASE_URL":             "postgres://localhost/sorovista",
+				"RATE_LIMIT_RPS":           "2.5",
+				"RATE_LIMIT_BURST":         "5",
+				"RATE_LIMIT_TRUSTED_PROXY": "true",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, 2.5, c.RateLimitRPS)
+				assert.Equal(t, 5, c.RateLimitBurst)
+				assert.True(t, c.RateLimitTrustedProxy)
+			},
+		},
+		{
+			name: "rate limiting is off by default",
+			env:  map[string]string{"DATABASE_URL": "postgres://localhost/sorovista"},
+			check: func(t *testing.T, c Config) {
+				assert.Zero(t, c.RateLimitRPS)
+				assert.Zero(t, c.RateLimitBurst)
+				assert.False(t, c.RateLimitTrustedProxy)
+			},
+		},
+		{
+			name: "rate limit requires the burst too",
+			env: map[string]string{
+				"DATABASE_URL":   "postgres://localhost/sorovista",
+				"RATE_LIMIT_RPS": "10",
+			},
+			wantErr: "must be set together",
+		},
+		{
+			name: "rate limit requires the rate too",
+			env: map[string]string{
+				"DATABASE_URL":     "postgres://localhost/sorovista",
+				"RATE_LIMIT_BURST": "10",
+			},
+			wantErr: "must be set together",
+		},
+		{
+			name: "non-positive rate is rejected",
+			env: map[string]string{
+				"DATABASE_URL":     "postgres://localhost/sorovista",
+				"RATE_LIMIT_RPS":   "0",
+				"RATE_LIMIT_BURST": "1",
+			},
+			wantErr: "invalid RATE_LIMIT_RPS",
+		},
+		{
+			name: "invalid trusted proxy flag is rejected",
+			env: map[string]string{
+				"DATABASE_URL":             "postgres://localhost/sorovista",
+				"RATE_LIMIT_TRUSTED_PROXY": "yes-please",
+			},
+			wantErr: "invalid RATE_LIMIT_TRUSTED_PROXY",
+		},
+		{
 			name: "start and retention ledgers are parsed",
 			env: map[string]string{
 				"DATABASE_URL":      "postgres://localhost/sorovista",

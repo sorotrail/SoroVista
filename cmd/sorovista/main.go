@@ -90,7 +90,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           router(src, log, m, cfg.CORSAllowedOrigins, broker),
+		Handler:           router(src, log, m, cfg, broker),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -196,7 +196,7 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 }
 
 // router mounts the web UI at the root and the JSON API under /api.
-func router(src source.EventSource, log *slog.Logger, m *metrics.Metrics, corsOrigins []string, broker ...*api.Broker) http.Handler {
+func router(src source.EventSource, log *slog.Logger, m *metrics.Metrics, cfg config.Config, broker ...*api.Broker) http.Handler {
 	apiServer := api.New(src, log)
 	if len(broker) > 0 && broker[0] != nil {
 		apiServer.WithBroker(broker[0])
@@ -211,7 +211,7 @@ func router(src source.EventSource, log *slog.Logger, m *metrics.Metrics, corsOr
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, reqid.Middleware, requestLogger(log))
-	r.Use(api.CORSMiddleware(api.CORSConfig{Origins: corsOrigins}))
+	r.Use(api.CORSMiddleware(api.CORSConfig{Origins: cfg.CORSAllowedOrigins}))
 	// RoutePattern returns the matched chi pattern (e.g. "/api/events/{id}"),
 	// not the raw path, keeping metric label cardinality bounded.
 	metrics.RoutePattern = func(req *http.Request) string {
@@ -221,6 +221,21 @@ func router(src source.EventSource, log *slog.Logger, m *metrics.Metrics, corsOr
 		return ""
 	}
 	r.Use(m.Middleware)
+
+	// Mounted after request-ID and metrics so a rejected request still has a
+	// correlation ID and is counted. Disabled by default (both settings zero).
+	if rl := api.NewRateLimiter(api.RateLimitConfig{
+		RPS:          cfg.RateLimitRPS,
+		Burst:        cfg.RateLimitBurst,
+		TrustedProxy: cfg.RateLimitTrustedProxy,
+		Metrics:      m,
+	}); rl != nil {
+		r.Use(rl.Middleware)
+		log.Info("api rate limiting enabled",
+			"rps", cfg.RateLimitRPS,
+			"burst", cfg.RateLimitBurst,
+			"trusted_proxy", cfg.RateLimitTrustedProxy)
+	}
 
 	// /metrics is unauthenticated like the rest of SoroVista's read surface:
 	// it exposes route timings and ingest counters, no event data.
