@@ -17,17 +17,74 @@ By default this runs in **standalone mode**, polling the public Stellar testnet 
 curl http://localhost:8080/health
 ```
 
+Sample response payload:
+
+```json
+{
+  "mode": "rpc",
+  "healthy": true,
+  "latest_ledger": 512000
+}
+```
+
 ## 2. Open the UI
 
 Visit `http://localhost:8080` in a browser. You'll land on the contracts list — initially empty, filling in as SoroVista ingests testnet activity (give it a minute on an active network).
+
+**Example:** Open the UI in a browser or verify the endpoint is serving:
+
+```bash
+curl -I http://localhost:8080
+```
 
 ## 3. Browse a contract
 
 Search for a contract by its `C...` ID, or click into any that appear in the list. The contract page shows its events newest-first, with decoded topics and values, filterable by event type and ledger range.
 
+**Example:** Navigate to a contract in the browser:
+
+```bash
+http://localhost:8080/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+```
+
+Or query its summary via the API:
+
+```bash
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC'
+```
+
 ## 4. Inspect an event
 
 Click any event row to see it fully expanded: decoded topics, decoded value, ledger, transaction hash, and whether the emitting call succeeded.
+
+**Example:** View an event detail page in the browser:
+
+```bash
+http://localhost:8080/events/0016880389704384512-0000000003
+```
+
+Or fetch the full event JSON via the API:
+
+```bash
+curl 'http://localhost:8080/api/events/0016880389704384512-0000000003'
+```
+
+Sample response payload:
+
+```json
+{
+  "id": "0016880389704384512-0000000003",
+  "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "ledger": 512000,
+  "type": "contract",
+  "tx_hash": "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+  "in_successful_call": true,
+  "topics": [
+    {"symbol": "transfer"}
+  ],
+  "value": {"i128": "1000"}
+}
+```
 
 ## 5. Try the JSON API
 
