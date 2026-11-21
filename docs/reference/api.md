@@ -31,7 +31,17 @@ Reports process health, including the active source (RPC or SoroTrail) and, in s
 ### `GET /api/stats`
 Overview counters: total contracts seen, total events, last-updated ledger (standalone mode) or last-synced position (upstream mode).
 
+```bash
+curl 'http://localhost:8080/api/stats'
+```
+
 ## Contracts
+
+Find contracts whose IDs contain a substring:
+
+```bash
+curl 'http://localhost:8080/api/contracts?search=CDLZ&limit=1'
+```
 
 ### `GET /api/contracts`
 List every known contract, newest-activity-first.
@@ -44,6 +54,11 @@ curl 'http://localhost:8080/api/contracts?limit=20'
 
 ### `GET /api/contracts/{id}`
 Summary for one contract: event count, first/last seen ledger, event-type breakdown.
+
+```bash
+CONTRACT_ID='<CONTRACT_ID>'
+curl "http://localhost:8080/api/contracts/${CONTRACT_ID}"
+```
 
 ## Events
 
