@@ -1,4 +1,4 @@
-.PHONY: build run test test-db lint fmt up down clean
+.PHONY: build run test test-db test-race lint fmt up down clean
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -17,6 +17,17 @@ test:
 # docker-compose database (make up first, or point at your own Postgres).
 test-db:
 	TEST_DATABASE_URL=$${TEST_DATABASE_URL:-postgres://sorovista:sorovista@localhost:5432/sorovista?sslmode=disable} go test ./...
+
+# Run the suite under the race detector. Kept out of `test` on purpose: -race
+# needs cgo and is roughly two to three times slower, so `test` stays the fast
+# local check and the race pass gets its own CI job with a longer timeout.
+# It runs without TEST_DATABASE_URL: no Postgres service is needed, and the
+# code paths exercised here (including the package-level metrics.RoutePattern
+# read by every request) are where the known race candidate lives. Store
+# concurrent paths under a database are not covered by this job; if one turns
+# up, that finding belongs in its own PR.
+test-race:
+	go test -race ./...
 
 lint:
 	golangci-lint run

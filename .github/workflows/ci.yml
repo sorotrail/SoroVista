@@ -101,6 +101,26 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The race-detector pass is a separate job rather than a step in the build
+  # or test-db job: a failing race check is a distinct, easy-to-read signal on
+  # the PR page, and running it here keeps the faster jobs from being blocked
+  # by -race's 2-3x slowdown. It runs without TEST_DATABASE_URL, so no Postgres
+  # service container is needed; cgo is available on ubuntu-latest by default.
+  # Store concurrent paths under a database are deliberately not covered by
+  # this job — if a database-backed race turns up elsewhere, that is its own
+  # finding and its own PR.
+  test-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Test (race detector)
+        run: go test -race ./...
+
   fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 10
