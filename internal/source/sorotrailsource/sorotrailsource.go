@@ -90,17 +90,25 @@ func (s *Source) ListEvents(ctx context.Context, q source.EventQuery) (source.Ev
 		return source.EventPage{}, err
 	}
 
-	events := res.events
+	// SoroTrail's /events endpoint has no time filter, so the time bounds are
+	// applied locally after the scan. That can shorten a page (or empty one)
+	// when the requested range lies outside the newest events scanned; the
+	// cursor below is therefore derived from the raw scan position so paging
+	// continues past the non-matching events instead of stopping early.
+	raw := res.events
+	events := filterByTime(raw, q.FromTime, q.ToTime)
+
 	var next string
 	if len(events) > limit {
 		events = events[:limit]
 		last := events[len(events)-1]
 		next = encodeCursor(last.ID, last.Ledger)
-	} else if !res.exhausted && len(events) > 0 {
+	} else if !res.exhausted && len(raw) > 0 {
 		// The scan stopped on its window budget rather than on the end of
 		// history, so older events may still exist. Offer a cursor that
-		// resumes below the oldest event seen.
-		last := events[len(events)-1]
+		// resumes below the oldest event seen, even when the time filter
+		// removed every event on this page.
+		last := raw[len(raw)-1]
 		next = encodeCursor(last.ID, last.Ledger)
 	}
 
@@ -338,28 +346,54 @@ func (s *Source) Stats(ctx context.Context) (source.Stats, error) {
 	return out, nil
 }
 
-// Status reports the upstream indexer's health.
+// probeTimeout bounds the status check. Upstream mode has no database, so the
+// only dependency is the indexer; a readiness probe hit every few seconds
+// must not wait on it forever.
+const probeTimeout = 3 * time.Second
+
+// Status reports the upstream indexer's health. It never returns an error: an
+// unreachable indexer is an unhealthy Status so the UI can always render its
+// banner. This mode has no database, so reporting one here would be wrong.
 func (s *Source) Status(ctx context.Context) source.Status {
-	st := source.Status{
-		Mode:          "sorotrail",
-		Healthy:       true,
-		RetentionNote: RetentionNote,
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
+	dep := source.Dependency{
+		Name:     "sorotrail",
+		Severity: source.DependencyFatal,
 	}
 
 	health, err := s.api.Health(ctx)
-	if err != nil {
-		st.Healthy = false
-		st.Detail = "sorotrail unreachable: " + err.Error()
-		return st
-	}
-	if health.Status != "ok" {
-		st.Healthy = false
-		st.Detail = "sorotrail reports " + health.Status
-		for name, detail := range health.Checks {
-			if detail != "ok" {
-				st.Detail += "; " + name + ": " + detail
+	switch {
+	case err != nil:
+		dep.Detail = source.SanitizeDetail("sorotrail unreachable: " + err.Error())
+	case health.Status != "ok":
+		detail := "sorotrail reports " + health.Status
+		// Sort the check names so the detail string is stable between
+		// requests; map iteration order is random.
+		names := make([]string, 0, len(health.Checks))
+		for name := range health.Checks {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if health.Checks[name] != "ok" {
+				detail += "; " + name + ": " + health.Checks[name]
 			}
 		}
+		dep.Detail = source.SanitizeDetail(detail)
+	default:
+		dep.Healthy = true
+	}
+
+	st := source.Status{
+		Mode:          "sorotrail",
+		Healthy:       dep.Healthy,
+		RetentionNote: RetentionNote,
+		Dependencies:  []source.Dependency{dep},
+	}
+	if !dep.Healthy {
+		st.Detail = dep.Detail
 		return st
 	}
 
@@ -367,6 +401,26 @@ func (s *Source) Status(ctx context.Context) source.Status {
 		st.LatestLedger = stats.LastIngestedLedger
 	}
 	return st
+}
+
+// filterByTime keeps events whose on-chain close time lies in the inclusive
+// range [from, to]. A zero bound means no constraint. It preserves the input
+// order, which ListEvents already sorted newest first.
+func filterByTime(events []source.Event, from, to time.Time) []source.Event {
+	if from.IsZero() && to.IsZero() {
+		return events
+	}
+	out := make([]source.Event, 0, len(events))
+	for _, e := range events {
+		if !from.IsZero() && e.LedgerClosedAt.Before(from) {
+			continue
+		}
+		if !to.IsZero() && e.LedgerClosedAt.After(to) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // typeBreakdown counts events per type, most common first.

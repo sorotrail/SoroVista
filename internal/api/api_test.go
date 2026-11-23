@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/sorotrail/sorovista/internal/buildinfo"
 	"github.com/sorotrail/sorovista/internal/source"
 )
 
@@ -129,6 +130,26 @@ func TestListEventsParsesFilters(t *testing.T) {
 	assert.JSONEq(t, `{"symbol":"transfer"}`, string(q.Topic))
 }
 
+func TestListEventsParsesTimeRange(t *testing.T) {
+	src := &fakeSource{events: source.EventPage{}}
+	target := "/api/events?from_time=2024-01-01T00:00:00%2B02:00&to_time=2024-01-01T12:00:00Z"
+	rec := do(t, testServer(src), target)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	q := src.lastEventQuery
+	assert.Equal(t, time.Date(2023, 12, 31, 22, 0, 0, 0, time.UTC), q.FromTime,
+		"an explicit offset must be honoured, not assumed to be UTC")
+	assert.Equal(t, time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), q.ToTime)
+}
+
+func TestListEventsTimeRangeIsOptional(t *testing.T) {
+	src := &fakeSource{events: source.EventPage{}}
+	rec := do(t, testServer(src), "/api/events")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, src.lastEventQuery.FromTime.IsZero())
+	assert.True(t, src.lastEventQuery.ToTime.IsZero())
+}
+
 func TestListEventsAcceptsJSONTopic(t *testing.T) {
 	src := &fakeSource{events: source.EventPage{}}
 	rec := do(t, testServer(src), `/api/events?topic=%7B%22address%22%3A%22GABC%22%7D`)
@@ -147,6 +168,9 @@ func TestListEventsRejectsBadInput(t *testing.T) {
 		{"negative ledger", "/api/events?from_ledger=-1", "from_ledger must be a positive integer"},
 		{"non-numeric ledger", "/api/events?to_ledger=abc", "to_ledger must be a positive integer"},
 		{"inverted range", "/api/events?from_ledger=200&to_ledger=100", "is after to_ledger"},
+		{"malformed from_time", "/api/events?from_time=yesterday", "from_time must be a valid RFC3339 timestamp"},
+		{"date without a time", "/api/events?to_time=2024-01-01", "to_time must be a valid RFC3339 timestamp"},
+		{"inverted time range", "/api/events?from_time=2024-01-02T00:00:00Z&to_time=2024-01-01T00:00:00Z", "is after to_time"},
 		{"limit too large", "/api/events?limit=100000", "limit must be an integer"},
 		{"limit zero", "/api/events?limit=0", "limit must be an integer"},
 	}
@@ -233,6 +257,38 @@ func TestStats(t *testing.T) {
 	require.Len(t, got.TypeBreakdown, 1)
 }
 
+func TestStatsError(t *testing.T) {
+	src := &fakeSource{err: errors.New("database connection lost")}
+
+	rec := do(t, testServer(src), "/api/stats")
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	var body errorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Contains(t, body.Error, "loading stats failed")
+	assert.NotContains(t, body.Error, "database connection lost")
+}
+
+func TestStatsEmpty(t *testing.T) {
+	src := &fakeSource{stats: source.Stats{
+		TotalEvents:   0,
+		ContractCount: 0,
+		FirstLedger:   0,
+		LastLedger:    0,
+		TypeBreakdown: nil,
+		Approximate:   false,
+	}}
+
+	rec := do(t, testServer(src), "/api/stats")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got source.Stats
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	assert.Equal(t, int64(0), got.TotalEvents)
+	assert.False(t, got.Approximate)
+	require.Empty(t, got.TypeBreakdown, "TypeBreakdown must be omitted when empty, since it carries omitempty")
+}
+
 func TestContractStats(t *testing.T) {
 	src := &fakeSource{contractStats: source.ContractStats{
 		ContractID:  testContract,
@@ -245,6 +301,40 @@ func TestContractStats(t *testing.T) {
 	var got source.ContractStats
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	assert.Equal(t, int64(42), got.TotalEvents)
+}
+
+func TestContractStatsError(t *testing.T) {
+	src := &fakeSource{err: errors.New("connection timeout")}
+
+	rec := do(t, testServer(src), "/api/contracts/"+testContract+"/stats")
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	var body errorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Contains(t, body.Error, "loading contract stats failed")
+	assert.NotContains(t, body.Error, "connection timeout")
+}
+
+func TestContractStatsInvalidID(t *testing.T) {
+	h := testServer(&fakeSource{})
+
+	rec := do(t, h, "/api/contracts/not-a-contract-id/stats")
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var body errorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Contains(t, body.Error, "invalid contract ID")
+}
+
+func TestVersion(t *testing.T) {
+	rec := do(t, testServer(&fakeSource{}), "/api/version")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got buildinfo.Info
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	assert.NotEmpty(t, got.Version, "version must be present")
+	assert.NotEmpty(t, got.Commit, "commit must be present")
+	assert.NotEmpty(t, got.Date, "build date must be present")
 }
 
 func TestHealth(t *testing.T) {

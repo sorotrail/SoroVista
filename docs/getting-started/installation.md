@@ -4,6 +4,8 @@ SoroVista is a single Go binary with a server-rendered web UI. Postgres is only 
 
 ## Docker Compose (recommended)
 
+**Example:** Clone the repository, configure the environment, and start the stack:
+
 ```bash
 git clone https://github.com/sorotrail/SoroVista.git
 cd SoroVista
@@ -17,20 +19,21 @@ Runs standalone mode with its bundled Postgres by default. The UI and API are se
 
 Requirements: Go 1.22+, and — for standalone mode — a reachable Postgres 14+ instance.
 
+**Example:** Build and run SoroVista in standalone mode:
+
 ```bash
 git clone https://github.com/sorotrail/SoroVista.git
 cd SoroVista
-make build          # or: go build ./...
+make build
 ```
 
 **Standalone mode:**
 
 ```bash
-make migrate
 SOURCE_MODE=rpc \
 RPC_URL=https://soroban-testnet.stellar.org \
 DATABASE_URL=postgres://user:pass@localhost:5432/sorovista?sslmode=disable \
-./sorovista
+./bin/sorovista
 ```
 
 **Upstream mode** (reading from a SoroTrail instance — no local database needed):
@@ -43,6 +46,8 @@ SOROTRAIL_URL=https://your-sorotrail-instance.example.com \
 
 ## Verifying the install
 
+**Example:** Check the health endpoint:
+
 ```bash
 curl http://localhost:8080/health
 ```
@@ -51,4 +56,11 @@ If the configured source (RPC or SoroTrail URL) or database is unreachable, the 
 
 ## Upgrading
 
-Pull the new version, run pending migrations (standalone mode only), restart. In upstream mode there's no local data to migrate — SoroVista holds no state of its own beyond what it queries live from SoroTrail.
+**Example (Docker Compose):** Pull the latest source and rebuild/restart the stack:
+
+```bash
+git pull
+docker compose up --build -d
+```
+
+In standalone mode, pending migrations are applied automatically on startup. In upstream mode there's no local data to migrate — SoroVista holds no state of its own beyond what it queries live from SoroTrail.
