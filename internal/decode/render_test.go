@@ -47,6 +47,9 @@ func TestRender(t *testing.T) {
 		{"json null", `null`, "null"},
 		{"bare string", `"plain"`, "plain"},
 		{"bare number", `7`, "7"},
+		{"empty input", ``, ""},
+		{"empty array", `[]`, "[]"},
+		{"negative zero renders without a sign", `-0`, "0"},
 	}
 
 	for _, tt := range tests {
@@ -100,6 +103,13 @@ func TestRenderTopics(t *testing.T) {
 		{"empty array", `[]`, []string{}},
 		{"nil input", ``, nil},
 		{"not an array falls back to raw", `{"symbol":"x"}`, []string{`{"symbol":"x"}`}},
+		{"json null is an empty list", `null`, []string{}},
+		{"malformed json falls back to raw", `not json`, []string{"not json"}},
+		{
+			name: "empty topic values are preserved",
+			in:   `[{}, {"symbol":""}]`,
+			want: []string{"{}", ""},
+		},
 	}
 
 	for _, tt := range tests {
@@ -138,6 +148,9 @@ func TestEventName(t *testing.T) {
 		{"empty topics", `[]`, ""},
 		{"nil topics", ``, ""},
 		{"malformed topics", `not json`, ""},
+		{"empty first topic", `[{}]`, ""},
+		{"multi-key first topic is not a name", `[{"symbol":"a","string":"b"}]`, ""},
+		{"empty symbol is not a name", `[{"symbol":""}]`, ""},
 	}
 
 	for _, tt := range tests {

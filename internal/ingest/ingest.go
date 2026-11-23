@@ -9,11 +9,14 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/sorotrail/sorovista/internal/decode"
 	"github.com/sorotrail/sorovista/internal/metrics"
 	"github.com/sorotrail/sorovista/internal/rpc"
 	"github.com/sorotrail/sorovista/internal/source"
 	"github.com/sorotrail/sorovista/internal/store"
+	"github.com/sorotrail/sorovista/internal/tracing"
 )
 
 // MaxPagesPerBatch bounds how many cursor pages one batch may follow in a
@@ -49,7 +52,9 @@ type Ingester struct {
 	opts    Options
 	log     *slog.Logger
 	// metrics is optional instrumentation; nil-safe, see internal/metrics.
-	metrics   *metrics.Metrics
+	metrics *metrics.Metrics
+	// tracer is optional instrumentation; nil-safe, see internal/tracing.
+	tracer    *tracing.Tracer
 	publisher EventPublisher
 }
 
@@ -64,6 +69,13 @@ func New(client rpc.Client, st store.Store, dec decode.Decoder, opts Options, lo
 // WithMetrics attaches Prometheus instrumentation to the ingest loop.
 func (i *Ingester) WithMetrics(m *metrics.Metrics) *Ingester {
 	i.metrics = m
+	return i
+}
+
+// WithTracer attaches OpenTelemetry tracing, which wraps each poll cycle in a
+// span. A nil tracer records nothing.
+func (i *Ingester) WithTracer(t *tracing.Tracer) *Ingester {
+	i.tracer = t
 	return i
 }
 
@@ -100,7 +112,15 @@ func (i *Ingester) Run(ctx context.Context) error {
 		}
 
 		start := time.Now()
-		err := i.pollOnce(ctx)
+		// One span per poll cycle ties the RPC calls and store writes of a poll
+		// to the lag and duration metrics recorded just below.
+		pollCtx, span := i.tracer.Start(ctx, "ingest.poll")
+		err := i.pollOnce(pollCtx)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
 		i.metrics.RecordPoll(err == nil, time.Since(start))
 		if err != nil {
 			if ctx.Err() != nil {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -271,6 +272,63 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 		require.NoError(t, err, "a cancelled context is a clean shutdown, not a failure")
 	case <-time.After(5 * time.Second):
 		t.Fatal("ingester did not stop after its context was cancelled")
+	}
+}
+
+func TestRunRetriesFailedPollsAtTheConfiguredInterval(t *testing.T) {
+	const (
+		interval = time.Hour
+		ledger   = 100
+	)
+	cases := []struct {
+		name     string
+		failures int
+	}{
+		{"one transient failure", 1},
+		{"consecutive transient failures", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				failures := make([]error, tc.failures)
+				for i := range failures {
+					failures[i] = errors.New("temporary RPC error")
+				}
+				client := &mockRPC{
+					latest: ledger,
+					errs:   failures,
+					responses: []rpc.GetEventsResult{
+						{Events: []rpc.Event{event("recovered", ledger, "CABC")}, LatestLedger: ledger},
+					},
+				}
+				st := newMockStore()
+				ing := newTestIngester(client, st, Options{PollInterval: interval, RetentionLedgers: 50})
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() { done <- ing.Run(ctx) }()
+
+				for failed := 1; failed <= tc.failures; failed++ {
+					synctest.Wait()
+					require.Len(t, client.capturedRequests(), failed)
+					assert.Zero(t, st.savedState().LastLedger)
+					assert.Zero(t, st.storedCount())
+
+					time.Sleep(interval - time.Nanosecond)
+					synctest.Wait()
+					assert.Len(t, client.capturedRequests(), failed, "retry must wait for the polling interval")
+					time.Sleep(time.Nanosecond)
+				}
+
+				synctest.Wait()
+				require.Len(t, client.capturedRequests(), tc.failures+1)
+				assert.Equal(t, int64(ledger), st.savedState().LastLedger)
+				_, stored := st.stored("recovered")
+				assert.True(t, stored)
+				cancel()
+				require.NoError(t, <-done)
+			})
+		})
 	}
 }
 
