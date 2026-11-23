@@ -249,6 +249,62 @@ func TestLoad(t *testing.T) {
 			wantErr: "invalid START_LEDGER",
 		},
 		{
+			name: "rate limiting is parsed with both halves",
+			env: map[string]string{
+				"DATABASE_URL":             "postgres://localhost/sorovista",
+				"RATE_LIMIT_RPS":           "2.5",
+				"RATE_LIMIT_BURST":         "5",
+				"RATE_LIMIT_TRUSTED_PROXY": "true",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.Equal(t, 2.5, c.RateLimitRPS)
+				assert.Equal(t, 5, c.RateLimitBurst)
+				assert.True(t, c.RateLimitTrustedProxy)
+			},
+		},
+		{
+			name: "rate limiting is off by default",
+			env:  map[string]string{"DATABASE_URL": "postgres://localhost/sorovista"},
+			check: func(t *testing.T, c Config) {
+				assert.Zero(t, c.RateLimitRPS)
+				assert.Zero(t, c.RateLimitBurst)
+				assert.False(t, c.RateLimitTrustedProxy)
+			},
+		},
+		{
+			name: "rate limit requires the burst too",
+			env: map[string]string{
+				"DATABASE_URL":   "postgres://localhost/sorovista",
+				"RATE_LIMIT_RPS": "10",
+			},
+			wantErr: "must be set together",
+		},
+		{
+			name: "rate limit requires the rate too",
+			env: map[string]string{
+				"DATABASE_URL":     "postgres://localhost/sorovista",
+				"RATE_LIMIT_BURST": "10",
+			},
+			wantErr: "must be set together",
+		},
+		{
+			name: "non-positive rate is rejected",
+			env: map[string]string{
+				"DATABASE_URL":     "postgres://localhost/sorovista",
+				"RATE_LIMIT_RPS":   "0",
+				"RATE_LIMIT_BURST": "1",
+			},
+			wantErr: "invalid RATE_LIMIT_RPS",
+		},
+		{
+			name: "invalid trusted proxy flag is rejected",
+			env: map[string]string{
+				"DATABASE_URL":             "postgres://localhost/sorovista",
+				"RATE_LIMIT_TRUSTED_PROXY": "yes-please",
+			},
+			wantErr: "invalid RATE_LIMIT_TRUSTED_PROXY",
+		},
+		{
 			name: "start and retention ledgers are parsed",
 			env: map[string]string{
 				"DATABASE_URL":      "postgres://localhost/sorovista",
@@ -259,6 +315,48 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, uint32(500), c.StartLedger)
 				assert.Equal(t, uint32(1000), c.RetentionLedgers)
 			},
+		},
+		{
+			name: "tracing is off by default",
+			env:  map[string]string{"DATABASE_URL": "postgres://localhost/sorovista"},
+			check: func(t *testing.T, c Config) {
+				assert.False(t, c.OTelEnabled, "tracing must be opt-in")
+				assert.Equal(t, DefaultOTelSampleRate, c.OTelSampleRate)
+				assert.Equal(t, DefaultOTelServiceName, c.OTelServiceName)
+				assert.Equal(t, DefaultOTelEndpoint, c.OTelEndpoint)
+			},
+		},
+		{
+			name: "tracing configuration is parsed",
+			env: map[string]string{
+				"DATABASE_URL":                "postgres://localhost/sorovista",
+				"OTEL_ENABLED":                "true",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "collector:4318",
+				"OTEL_SAMPLE_RATE":            "0.25",
+				"OTEL_SERVICE_NAME":           "sorovista-edge",
+			},
+			check: func(t *testing.T, c Config) {
+				assert.True(t, c.OTelEnabled)
+				assert.Equal(t, "collector:4318", c.OTelEndpoint)
+				assert.InDelta(t, 0.25, c.OTelSampleRate, 1e-9)
+				assert.Equal(t, "sorovista-edge", c.OTelServiceName)
+			},
+		},
+		{
+			name: "an out-of-range sample rate is rejected",
+			env: map[string]string{
+				"DATABASE_URL":     "postgres://localhost/sorovista",
+				"OTEL_SAMPLE_RATE": "1.5",
+			},
+			wantErr: "invalid OTEL_SAMPLE_RATE",
+		},
+		{
+			name: "a non-boolean OTEL_ENABLED is rejected",
+			env: map[string]string{
+				"DATABASE_URL": "postgres://localhost/sorovista",
+				"OTEL_ENABLED": "yes-please",
+			},
+			wantErr: "invalid OTEL_ENABLED",
 		},
 	}
 
@@ -299,6 +397,9 @@ func TestValidContractID(t *testing.T) {
 		{"too long", validContract + "A", false},
 		{"lowercase is not strkey", "c" + validContract[1:], false},
 		{"digits outside base32", validContract[:54] + "01", false},
+		{"prefix only is too short", "C", false},
+		{"all base32 payload is valid", "C" + strings.Repeat("Z", 55), true},
+		{"embedded whitespace is invalid", validContract[:20] + " " + validContract[21:], false},
 	}
 
 	for _, tt := range tests {

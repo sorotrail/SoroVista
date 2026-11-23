@@ -39,6 +39,12 @@ const (
 	DefaultRPCURL       = "https://soroban-testnet.stellar.org"
 	DefaultPollInterval = 5 * time.Second
 	DefaultHTTPAddr     = ":8080"
+	// Tracing defaults. A 10% head rate keeps a busy chain-tip instance from
+	// flooding a collector while still producing enough traces to diagnose a
+	// slow page view.
+	DefaultOTelEndpoint    = "http://localhost:4318"
+	DefaultOTelSampleRate  = 0.1
+	DefaultOTelServiceName = "sorovista"
 	// DefaultRetentionLedgers is how far back a cold start reaches when
 	// START_LEDGER is unset — roughly 24h at ~5s per ledger. Stellar RPC
 	// retains events for about 24h to 7d, so reaching further back than the
@@ -397,6 +403,9 @@ func (c Config) validate() error {
 
 	if c.HTTPAddr == "" {
 		return fmt.Errorf("HTTP_ADDR must not be empty")
+	}
+	if c.OTelEnabled && c.OTelEndpoint == "" {
+		return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT must not be empty when OTEL_ENABLED=true")
 	}
 	return nil
 }

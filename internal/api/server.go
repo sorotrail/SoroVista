@@ -66,6 +66,11 @@ func (s *Server) Routes() chi.Router {
 	// ordinary JSON endpoints.
 	r.Get("/events/stream", s.handleEventStream)
 
+	// Exports stream until the result is exhausted or MaxExportRows is hit, so
+	// they must not inherit the 60-second JSON timeout.
+	r.Get("/events/export", s.handleExportEvents)
+	r.Get("/contracts/{id}/events/export", s.handleExportContractEvents)
+
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Timeout(60 * time.Second))
 

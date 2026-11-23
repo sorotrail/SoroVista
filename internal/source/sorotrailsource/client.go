@@ -131,6 +131,7 @@ func (a *httpAPI) Events(ctx context.Context, q upstreamQuery) (upstreamPage, er
 	return page, nil
 }
 
+// Event fetches a single event by its SoroTrail ID.
 func (a *httpAPI) Event(ctx context.Context, id string) (source.Event, error) {
 	var e source.Event
 	if err := a.get(ctx, "/events/"+url.PathEscape(id), nil, &e); err != nil {
@@ -148,6 +149,8 @@ func (a *httpAPI) Stats(ctx context.Context) (upstreamStats, error) {
 	return s, nil
 }
 
+// Health fetches SoroTrail's health status and checks. A degraded (503)
+// response is returned without error as long as its body carries a status.
 func (a *httpAPI) Health(ctx context.Context) (upstreamHealth, error) {
 	var h upstreamHealth
 	// SoroTrail answers /health with 503 when degraded, and the body still

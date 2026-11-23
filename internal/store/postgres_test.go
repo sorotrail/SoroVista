@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,35 @@ import (
 
 	"github.com/sorotrail/sorovista/internal/source"
 )
+
+// storeSkipOnce ensures the missing-database notice is printed once per test
+// binary rather than once per test. A skipped test prints nothing under a
+// plain `go test`, which is how a contributor can run the suite, see green and
+// never learn that almost none of the persistence layer executed.
+var storeSkipOnce sync.Once
+
+// skipStoreTests reports the skip loudly and then skips the calling test. It
+// runs before the first database-backed test, so a full suite without
+// TEST_DATABASE_URL always says what was missed and how to run it.
+func skipStoreTests(t *testing.T) {
+	t.Helper()
+
+	// REQUIRE_DB turns the skip into a failure, letting a job assert that the
+	// integration tests really ran instead of trusting its own configuration.
+	if os.Getenv("REQUIRE_DB") != "" {
+		t.Fatalf("TEST_DATABASE_URL is not set but REQUIRE_DB is; the Postgres integration tests must run in this job (run `make up` then `make test-db`)")
+	}
+
+	storeSkipOnce.Do(func() {
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "[store] Postgres integration tests skipped: TEST_DATABASE_URL is not set.")
+		fmt.Fprintln(os.Stderr, "[store] This run did NOT exercise internal/store: cursors, filters, aggregates and ingest state went untested.")
+		fmt.Fprintln(os.Stderr, "[store] To run them: make up && make test-db")
+		fmt.Fprintln(os.Stderr, "")
+	})
+
+	t.Skip("TEST_DATABASE_URL is not set; skipping the Postgres integration tests. Run `make up` then `make test-db` to exercise the store.")
+}
 
 // newTestStore connects to the database named by TEST_DATABASE_URL, applies
 // the migrations and truncates the tables. Without that variable the whole
@@ -24,7 +54,7 @@ func newTestStore(t *testing.T) *Postgres {
 
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL is not set; skipping the Postgres integration tests (see make test-db)")
+		skipStoreTests(t)
 	}
 
 	require.NoError(t, Migrate(databaseURL))
@@ -40,6 +70,19 @@ func newTestStore(t *testing.T) *Postgres {
 	require.NoError(t, err)
 
 	return pg
+}
+
+// TestDatabaseIsRequiredWhenRequested is the opt-in guard: with REQUIRE_DB set,
+// a missing TEST_DATABASE_URL is a failure rather than a skip, so CI or an
+// operator can assert the store tests ran. It is deliberately separate from
+// newTestStore so the assertion holds even when only this test is selected.
+func TestDatabaseIsRequiredWhenRequested(t *testing.T) {
+	if os.Getenv("REQUIRE_DB") == "" {
+		t.Skip("REQUIRE_DB is not set; set it to fail instead of skipping when TEST_DATABASE_URL is missing")
+	}
+	if os.Getenv("TEST_DATABASE_URL") == "" {
+		t.Fatal("REQUIRE_DB is set but TEST_DATABASE_URL is not; run `make up` then `make test-db`")
+	}
 }
 
 // event builds a test event whose ID sorts chronologically, as TOIDs do.
@@ -224,6 +267,30 @@ func TestQueryEventsFilters(t *testing.T) {
 		got, _, err := pg.QueryEvents(ctx, source.EventQuery{FromLedger: 105, ToLedger: 105})
 		require.NoError(t, err)
 		assert.Len(t, got, 2, "both events in ledger 105")
+		for _, e := range got {
+			assert.Equal(t, int64(105), e.Ledger)
+		}
+	})
+
+	t.Run("by inclusive time range", func(t *testing.T) {
+		from := time.Unix(1700000105, 0).UTC()
+		to := time.Unix(1700000110, 0).UTC()
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{FromTime: from, ToTime: to})
+		require.NoError(t, err)
+		require.Len(t, got, 3, "ledger 105 carries two events and ledger 110 one")
+		for _, e := range got {
+			assert.False(t, e.LedgerClosedAt.Before(from))
+			assert.False(t, e.LedgerClosedAt.After(to))
+		}
+	})
+
+	t.Run("time and ledger bounds intersect", func(t *testing.T) {
+		got, _, err := pg.QueryEvents(ctx, source.EventQuery{
+			FromTime: time.Unix(1700000105, 0).UTC(),
+			ToLedger: 105,
+		})
+		require.NoError(t, err)
+		assert.Len(t, got, 2)
 		for _, e := range got {
 			assert.Equal(t, int64(105), e.Ledger)
 		}

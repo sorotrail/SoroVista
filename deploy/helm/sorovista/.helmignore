@@ -1,0 +1,17 @@
+# Patterns to ignore when building packages.
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.DS_Store
+
+# Test code and fixtures are not part of the installable chart.
+test/
+testdata/
+ci/
+*.go
+go.mod
+go.sum

@@ -13,6 +13,21 @@ SoroVista polls Stellar RPC directly and keeps its own Postgres store, the same 
 
 **Limits:** Stellar RPC only retains contract events for a short window (roughly 24 hours to 7 days). Standalone SoroVista only knows about events it has personally ingested while running — history from before it started, or from any downtime longer than the RPC's retention, is simply not there.
 
+**Example:** Poll the public testnet RPC and store events in a local Postgres:
+
+```bash
+SOURCE_MODE=rpc \
+RPC_URL=https://soroban-testnet.stellar.org \
+DATABASE_URL=postgres://user:pass@localhost:5432/sorovista?sslmode=disable \
+  go run ./cmd/sorovista
+```
+
+Then read back what it has ingested so far:
+
+```bash
+curl 'http://localhost:8080/api/events?limit=1'
+```
+
 ## Upstream mode (`SOURCE_MODE=sorotrail`)
 
 SoroVista reads from a running [SoroTrail](https://github.com/sorotrail/SoroTrail) instance's API instead of polling the RPC itself.
@@ -23,6 +38,20 @@ SoroVista reads from a running [SoroTrail](https://github.com/sorotrail/SoroTrai
 - You'd rather not run two separate ingestion loops against the same RPC.
 
 **Limits:** SoroVista's history is exactly SoroTrail's history — no more, no less. If SoroTrail only started indexing recently, upstream mode won't show anything older than that either.
+
+**Example:** Read from a running SoroTrail instance — no local database needed:
+
+```bash
+SOURCE_MODE=sorotrail \
+SOROTRAIL_URL=https://your-sorotrail-instance.example.com \
+  go run ./cmd/sorovista
+```
+
+Then confirm it is serving SoroTrail's data:
+
+```bash
+curl 'http://localhost:8080/api/contracts?limit=1'
+```
 
 ## Switching modes
 

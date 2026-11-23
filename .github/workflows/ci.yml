@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Build
         run: go build ./...
       - name: Vet
@@ -52,6 +55,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Test (with Postgres integration tests)
         # pipefail keeps go test's exit status when its output is tee'd for the
         # coverage report below.
@@ -110,10 +116,36 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Fuzz golden deserializer
         run: go test -fuzz=FuzzGoldenDeserializer -fuzztime=10s ./pkg/fuzz
       - name: Fuzz template interpolation
         run: go test -fuzz=FuzzInterpolate -fuzztime=10s ./pkg/fuzz
+
+  # Renders and lints the Helm chart. Helm must be installed for real: the
+  # render tests skip themselves when the binary is absent, and a skipped test
+  # looks the same as a passing one in CI output.
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.16.3
+      - name: Confirm Helm is installed
+        run: helm version
+      - name: Lint chart
+        run: helm lint deploy/helm/sorovista
+      - name: Render chart (golden files and config coverage)
+        run: go test ./deploy/helm/sorovista/test -v
 
   lint:
     runs-on: ubuntu-latest
@@ -124,6 +156,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.12.2

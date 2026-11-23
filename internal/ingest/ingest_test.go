@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/sorotrail/sorovista/internal/metrics"
 	"github.com/sorotrail/sorovista/internal/rpc"
 	"github.com/sorotrail/sorovista/internal/source"
 	"github.com/sorotrail/sorovista/internal/store"
@@ -274,6 +277,63 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	}
 }
 
+func TestRunRetriesFailedPollsAtTheConfiguredInterval(t *testing.T) {
+	const (
+		interval = time.Hour
+		ledger   = 100
+	)
+	cases := []struct {
+		name     string
+		failures int
+	}{
+		{"one transient failure", 1},
+		{"consecutive transient failures", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				failures := make([]error, tc.failures)
+				for i := range failures {
+					failures[i] = errors.New("temporary RPC error")
+				}
+				client := &mockRPC{
+					latest: ledger,
+					errs:   failures,
+					responses: []rpc.GetEventsResult{
+						{Events: []rpc.Event{event("recovered", ledger, "CABC")}, LatestLedger: ledger},
+					},
+				}
+				st := newMockStore()
+				ing := newTestIngester(client, st, Options{PollInterval: interval, RetentionLedgers: 50})
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() { done <- ing.Run(ctx) }()
+
+				for failed := 1; failed <= tc.failures; failed++ {
+					synctest.Wait()
+					require.Len(t, client.capturedRequests(), failed)
+					assert.Zero(t, st.savedState().LastLedger)
+					assert.Zero(t, st.storedCount())
+
+					time.Sleep(interval - time.Nanosecond)
+					synctest.Wait()
+					assert.Len(t, client.capturedRequests(), failed, "retry must wait for the polling interval")
+					time.Sleep(time.Nanosecond)
+				}
+
+				synctest.Wait()
+				require.Len(t, client.capturedRequests(), tc.failures+1)
+				assert.Equal(t, int64(ledger), st.savedState().LastLedger)
+				_, stored := st.stored("recovered")
+				assert.True(t, stored)
+				cancel()
+				require.NoError(t, <-done)
+			})
+		})
+	}
+}
+
 func TestFilterBatches(t *testing.T) {
 	contract := func(i int) string { return fmt.Sprintf("C%055d", i) }
 
@@ -372,4 +432,338 @@ func TestPollOncePublishesDecodedEventsToBroker(t *testing.T) {
 	require.NoError(t, ing.pollOnce(context.Background()))
 
 	assert.Equal(t, []string{"0000000100-0000000001"}, pub.events)
+}
+
+func TestRunShutdownOnContextCancel(t *testing.T) {
+	client := &mockRPC{latest: 100}
+	st := newMockStore()
+
+	ing := newTestIngester(client, st, Options{
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- ing.Run(ctx)
+	}()
+
+	// Allow the loop to start, then cancel the context.
+	time.Sleep(2 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err, "cancelled context should cause Run to exit cleanly without an error")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for Run to exit upon context cancellation")
+	}
+}
+
+func TestRunErrorRecoveryAndCursorPreservation(t *testing.T) {
+	// First poll fails on GetLatestLedger; second poll succeeds with events.
+	firstErr := errors.New("simulated transient RPC connectivity failure")
+	client := &mockRPC{
+		latest:     100,
+		latestErrs: []error{firstErr},
+		responses: []rpc.GetEventsResult{
+			{
+				Events:       []rpc.Event{event("0000000100-0000000001", 100, "CABC")},
+				LatestLedger: 100,
+			},
+		},
+	}
+
+	st := newMockStore()
+	st.state = store.IngestState{LastLedger: 50}
+
+	savedCh := make(chan store.IngestState, 2)
+	st.onSaveState = func(s store.IngestState) {
+		select {
+		case savedCh <- s:
+		default:
+		}
+	}
+
+	ing := newTestIngester(client, st, Options{
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ing.Run(ctx)
+	}()
+
+	// The first poll fails, so saved state MUST NOT advance past 50.
+	// The second poll runs automatically on the next tick and succeeds.
+	select {
+	case saved := <-savedCh:
+		assert.Equal(t, int64(100), saved.LastLedger, "cursor should advance only after successful poll")
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for ingester to recover and complete second poll")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for Run to stop")
+	}
+
+	assert.Equal(t, 1, st.storedCount())
+	assert.Equal(t, int64(100), st.savedState().LastLedger)
+}
+
+func TestRunCursorProgressAcrossMultiplePollIterations(t *testing.T) {
+	// Iteration 1: tip at 100, event 1.
+	// Iteration 2: tip at 105, event 2.
+	// Iteration 3: tip still at 105 (caught up, no new events).
+	client := &mockRPC{
+		latest: 100,
+		responses: []rpc.GetEventsResult{
+			{
+				Events:       []rpc.Event{event("0000000100-0000000001", 100, "CABC")},
+				LatestLedger: 100,
+			},
+			{
+				Events:       []rpc.Event{event("0000000105-0000000001", 105, "CABC")},
+				LatestLedger: 105,
+			},
+		},
+	}
+
+	st := newMockStore()
+
+	savedCount := 0
+	savedCh := make(chan int64, 4)
+	st.onSaveState = func(s store.IngestState) {
+		savedCount++
+		savedCh <- s.LastLedger
+		if savedCount == 1 {
+			// Advance the mock RPC latest ledger for the next tick.
+			client.mu.Lock()
+			client.latest = 105
+			client.mu.Unlock()
+		}
+	}
+
+	ing := newTestIngester(client, st, Options{
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ing.Run(ctx)
+	}()
+
+	// Wait for first iteration to save ledger 100.
+	select {
+	case l1 := <-savedCh:
+		assert.Equal(t, int64(100), l1)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for first poll to save")
+	}
+
+	// Wait for second iteration to save ledger 105.
+	select {
+	case l2 := <-savedCh:
+		assert.Equal(t, int64(105), l2)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for second poll to save")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for Run to stop")
+	}
+
+	assert.Equal(t, 2, st.storedCount())
+	assert.Equal(t, int64(105), st.savedState().LastLedger)
+}
+
+func TestRunIdempotencyAcrossIterations(t *testing.T) {
+	// Re-reading duplicate events must not duplicate rows in the store.
+	client := &mockRPC{
+		latest: 100,
+		responses: []rpc.GetEventsResult{
+			{
+				Events:       []rpc.Event{event("0000000100-0000000001", 100, "CABC")},
+				LatestLedger: 100,
+			},
+			{
+				Events:       []rpc.Event{event("0000000100-0000000001", 100, "CABC")},
+				LatestLedger: 100,
+			},
+		},
+	}
+
+	st := newMockStore()
+
+	polls := 0
+	savedCh := make(chan struct{}, 4)
+	st.onSaveState = func(store.IngestState) {
+		polls++
+		savedCh <- struct{}{}
+		if polls == 1 {
+			// Reset saved state backward to simulate a re-read of the same range.
+			st.mu.Lock()
+			st.state = store.IngestState{LastLedger: 99}
+			st.mu.Unlock()
+		}
+	}
+
+	ing := newTestIngester(client, st, Options{
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ing.Run(ctx)
+	}()
+
+	for range 2 {
+		select {
+		case <-savedCh:
+		case <-time.After(1 * time.Second):
+			t.Fatal("timed out waiting for poll")
+		}
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for Run to stop")
+	}
+
+	// Even though the same event was upserted twice, store count is 1.
+	assert.Equal(t, 1, st.storedCount())
+}
+
+func TestRunWithMetrics(t *testing.T) {
+	client := &mockRPC{
+		latest: 100,
+		responses: []rpc.GetEventsResult{
+			{
+				Events:       []rpc.Event{event("0000000100-0000000001", 100, "CABC")},
+				LatestLedger: 100,
+			},
+		},
+	}
+
+	st := newMockStore()
+	m := metrics.New()
+
+	savedCh := make(chan struct{}, 1)
+	st.onSaveState = func(store.IngestState) {
+		select {
+		case savedCh <- struct{}{}:
+		default:
+		}
+	}
+
+	ing := newTestIngester(client, st, Options{
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	}).WithMetrics(m)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ing.Run(ctx)
+	}()
+
+	select {
+	case <-savedCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for poll with metrics")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for Run to stop")
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	m.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, `sorovista_polls_total{outcome="ok"} 1`)
+	assert.Contains(t, body, `sorovista_events_ingested_total 1`)
+}
+
+func TestRunWarnsOnExcessiveWatchedContracts(t *testing.T) {
+	// Passing more than MaxWatchedContracts (100) triggers the warning log branch.
+	manyContracts := make([]string, rpc.MaxWatchedContracts+5)
+	for i := range manyContracts {
+		manyContracts[i] = fmt.Sprintf("CONTRACT_%03d", i)
+	}
+
+	client := &mockRPC{latest: 50}
+	st := newMockStore()
+
+	ing := newTestIngester(client, st, Options{
+		WatchedContracts: manyContracts,
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel upfront
+
+	err := ing.Run(ctx)
+	require.NoError(t, err)
+}
+
+func TestRunContextCancelDuringPoll(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &mockRPC{
+		latest: 100,
+		onGetLatest: func() {
+			cancel()
+		},
+	}
+	st := newMockStore()
+
+	ing := newTestIngester(client, st, Options{
+		PollInterval:     5 * time.Millisecond,
+		RetentionLedgers: 10,
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- ing.Run(ctx)
+	}()
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for Run to exit upon cancellation during poll")
+	}
 }

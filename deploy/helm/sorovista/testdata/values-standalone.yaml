@@ -1,0 +1,42 @@
+# Render fixture for standalone mode. Every environment variable that
+# internal/config reads for this mode is populated so the coverage guard can
+# assert the chart maps all of them.
+sourceMode: rpc
+
+replicaCount: 1
+
+httpAddr: ":8080"
+logLevel: debug
+corsAllowedOrigins: "https://explorer.example.test"
+rateLimitRPS: 10
+rateLimitBurst: 20
+rateLimitTrustedProxy: true
+otelEnabled: true
+otelEndpoint: http://otel-collector:4318
+otelSampleRate: 0.25
+otelServiceName: sorovista-test
+
+network: mainnet
+rpcUrl: "https://rpc.example.test"
+networkPassphrase: "Example Network ; 2026"
+pollInterval: 7s
+watchedContracts: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+startLedger: "12345"
+retentionLedgers: 4321
+
+database:
+  url: "postgres://sorovista:secret@postgres:5432/sorovista?sslmode=disable"
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  labels:
+    release: kube-prometheus-stack
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi

@@ -13,6 +13,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func gatherNames(t *testing.T, m *Metrics) map[string]bool {
+	t.Helper()
+	families, err := m.registry.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	names := make(map[string]bool, len(families))
+	for _, family := range families {
+		names[family.GetName()] = true
+	}
+	return names
+}
+
+func TestNewRegistersMetrics(t *testing.T) {
+	m := New()
+
+	// Label-vector metrics only appear after at least one label combination
+	// has been observed.
+	m.RecordPoll(true, 10*time.Millisecond)
+	m.RecordPoll(false, 20*time.Millisecond)
+	m.SetLag(5)
+	m.RecordEvents(3)
+	m.TickPollAge(1.5)
+	m.httpDuration.WithLabelValues("/api/events", http.MethodGet, "200").Observe(0.01)
+
+	want := []string{
+		"sorovista_polls_total",
+		"sorovista_poll_duration_seconds",
+		"sorovista_ingest_lag_ledgers",
+		"sorovista_events_ingested_total",
+		"sorovista_seconds_since_last_poll",
+		"sorovista_http_request_duration_seconds",
+	}
+	got := gatherNames(t, m)
+	for _, name := range want {
+		if !got[name] {
+			t.Errorf("metric %q is not registered", name)
+		}
+	}
+}
+
 // scrape renders the registry through Handler, the same path Prometheus takes
 // in production, so every assertion below sees exactly what a real scraper
 // would receive. prometheus/testutil would be more convenient but pulls a new
@@ -35,10 +76,8 @@ func setRoutePattern(fn func(*http.Request) string) func() {
 	return func() { RoutePattern = prev }
 }
 
-// The nil contract is what lets ingest.WithMetrics and the HTTP middleware be
-// wired unconditionally. Table-driven over the exported methods so a method
-// added later without its `if m == nil` guard is more likely to be caught here
-// than by a nil pointer dereference in production.
+// The nil contract lets call sites wire metrics unconditionally. Table-driven
+// over the exported methods so a future method without a nil guard is caught.
 func TestNilMetricsRecordsNothing(t *testing.T) {
 	var m *Metrics
 
@@ -59,8 +98,6 @@ func TestNilMetricsRecordsNothing(t *testing.T) {
 	}
 
 	t.Run("Middleware still calls the next handler", func(t *testing.T) {
-		// RoutePattern is left unset on purpose: the nil path returns before
-		// it is consulted, so reaching it would panic and fail this test.
 		var called bool
 		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			called = true
@@ -79,8 +116,6 @@ func TestNilMetricsRecordsNothing(t *testing.T) {
 // New builds its own registry precisely so two instances in one process do not
 // collide on duplicate registration.
 func TestNewInstancesDoNotShareARegistry(t *testing.T) {
-	// Panicking here is the failure mode: a shared registry would reject the
-	// second registration of the same metric names.
 	a := New()
 	b := New()
 	a.RecordEvents(3)
@@ -131,8 +166,6 @@ func TestMiddlewareRecordsHandlerStatus(t *testing.T) {
 		wantStatus int
 	}{
 		{
-			// The status the handler actually chose must be the label, not
-			// the 200 the recorder starts with.
 			name: "explicit status",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
@@ -140,8 +173,6 @@ func TestMiddlewareRecordsHandlerStatus(t *testing.T) {
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			// A handler that never calls WriteHeader is recorded as 200, the
-			// statusRecorder default, which is what the client received.
 			name: "implicit 200",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte("ok"))

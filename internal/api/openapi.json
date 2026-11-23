@@ -72,6 +72,12 @@
             "$ref": "#/components/parameters/ToLedger"
           },
           {
+            "$ref": "#/components/parameters/FromTime"
+          },
+          {
+            "$ref": "#/components/parameters/ToTime"
+          },
+          {
             "$ref": "#/components/parameters/Cursor"
           },
           {
@@ -96,6 +102,60 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/contracts/{id}/events/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ContractID"
+        }
+      ],
+      "get": {
+        "summary": "Stream one contract's events as CSV or NDJSON",
+        "description": "Streams every event matching the same filters as `GET /api/contracts/{id}/events`, newest first, without buffering the result. `limit` is ignored because an export always covers the full result; `cursor` resumes from a previous page. A single export is capped at 100,000 rows. Rows are flushed periodically. If the backend fails mid-stream the connection ends with a truncated file: complete rows only, with no final marker.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EventType"
+          },
+          {
+            "$ref": "#/components/parameters/Topic"
+          },
+          {
+            "$ref": "#/components/parameters/FromLedger"
+          },
+          {
+            "$ref": "#/components/parameters/ToLedger"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/TxHash"
+          },
+          {
+            "$ref": "#/components/parameters/ExportFormat"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streamed export",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -154,6 +214,12 @@
             "$ref": "#/components/parameters/ToLedger"
           },
           {
+            "$ref": "#/components/parameters/FromTime"
+          },
+          {
+            "$ref": "#/components/parameters/ToTime"
+          },
+          {
             "$ref": "#/components/parameters/Cursor"
           },
           {
@@ -175,6 +241,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/events/export": {
+      "get": {
+        "summary": "Stream the global event feed as CSV or NDJSON",
+        "description": "Streams every event matching the same filters as `GET /api/events`, newest first, without buffering the result. `limit` is ignored because an export always covers the full result; `cursor` resumes from a previous page. A single export is capped at 100,000 rows. Rows are flushed periodically. If the backend fails mid-stream the connection ends with a truncated file: complete rows only, with no final marker.",
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^C[A-Z2-7]{55}$"
+            },
+            "description": "Restrict to one contract"
+          },
+          {
+            "$ref": "#/components/parameters/EventType"
+          },
+          {
+            "$ref": "#/components/parameters/Topic"
+          },
+          {
+            "$ref": "#/components/parameters/FromLedger"
+          },
+          {
+            "$ref": "#/components/parameters/ToLedger"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/TxHash"
+          },
+          {
+            "$ref": "#/components/parameters/ExportFormat"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streamed export",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -210,6 +334,12 @@
           },
           {
             "$ref": "#/components/parameters/ToLedger"
+          },
+          {
+            "$ref": "#/components/parameters/FromTime"
+          },
+          {
+            "$ref": "#/components/parameters/ToTime"
           },
           {
             "$ref": "#/components/parameters/TxHash"
@@ -527,6 +657,24 @@
         },
         "description": "Inclusive upper ledger bound"
       },
+      "FromTime": {
+        "name": "from_time",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Inclusive lower RFC3339 bound on ledger_closed_at (on-chain close time, not created_at). A date without a time is rejected. Intersects with ledger bounds."
+      },
+      "ToTime": {
+        "name": "to_time",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Inclusive upper RFC3339 bound on ledger_closed_at (on-chain close time, not created_at). A date without a time is rejected. Intersects with ledger bounds."
+      },
       "TxHash": {
         "name": "tx_hash",
         "in": "query",
@@ -534,6 +682,19 @@
           "type": "string"
         },
         "description": "Restrict to events produced by one transaction"
+      },
+      "ExportFormat": {
+        "name": "format",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "ndjson"
+          ],
+          "default": "csv"
+        },
+        "description": "Export format. CSV has a stable header row and writes topics/value as JSON text inside the cell; NDJSON writes one annotated Event object per line."
       }
     },
     "responses": {

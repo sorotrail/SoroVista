@@ -7,6 +7,10 @@ not show well is **decoded Soroban contract event data** — what a contract
 actually emitted, with human-readable topics and values, browsable and
 filterable. SoroVista is a focused, self-hostable explorer for exactly that.
 
+[![Go Reference](https://img.shields.io/badge/go-1.26.0-00ADD8?logo=go)](https://pkg.go.dev/github.com/sorotrail/sorovista)
+[![CI](https://img.shields.io/github/actions/workflow/status/sorotrail/SoroVista/ci.yml?branch=main)](https://github.com/sorotrail/SoroVista/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/sorotrail/SoroVista/blob/main/LICENSE)
+
 Point it at a network, and browse contracts, inspect their decoded events, and
 filter across them in a small server-rendered web UI. Everything the UI shows is
 also available as JSON, so SoroVista doubles as a queryable API.
@@ -69,7 +73,8 @@ docker compose up --build
 
 This starts Postgres and SoroVista against the public Stellar testnet. The UI is
 on <http://localhost:8080>; watch the logs to see events arrive. Migrations run
-automatically at startup.
+automatically at startup. A fresh standalone instance starts empty — it has
+ingested no events yet — until the poll loop picks them up from the RPC.
 
 To watch specific contracts instead of everything:
 
@@ -137,6 +142,13 @@ startup with a message naming both, rather than failing later on a request.
 | `HTTP_ADDR` | `:8080` | both | Listen address for the UI and API. |
 | `LOG_LEVEL` | `info` | both | `debug` \| `info` \| `warn` \| `error`. |
 | `CORS_ALLOWED_ORIGINS` | empty | both | Browser Origins allowed to call the API cross-origin. Empty disables CORS. |
+| `OTEL_ENABLED` | `false` | both | Enables OpenTelemetry tracing. Off means no exporter and no background work. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | both | OTLP/HTTP collector endpoint; used only when tracing is enabled. |
+| `OTEL_SAMPLE_RATE` | `0.1` | both | Head sampling ratio in `[0,1]`. Parent-based sampling honours inbound decisions. |
+| `OTEL_SERVICE_NAME` | `sorovista` | both | Service name reported in traces. |
+| `RATE_LIMIT_RPS` | empty (off) | both | Sustained per-client requests/second for `/api`. Must be set with `RATE_LIMIT_BURST`; both empty disables rate limiting. |
+| `RATE_LIMIT_BURST` | empty (off) | both | Per-client instantaneous burst allowance. Must be set with `RATE_LIMIT_RPS`. |
+| `RATE_LIMIT_TRUSTED_PROXY` | `false` | both | Key the limiter on the first `X-Forwarded-For` entry. Only safe behind a proxy that overwrites the header. |
 | `NETWORK` | `testnet` | standalone | `testnet` \| `mainnet` \| `futurenet` \| `custom`. Selects the network preset (passphrase + public RPC). |
 | `RPC_URL` | per `NETWORK` | standalone | Stellar RPC endpoint; overrides the preset. |
 | `NETWORK_PASSPHRASE` | per `NETWORK` | standalone | Overrides the preset passphrase. Required with `NETWORK=custom`. |
@@ -161,7 +173,9 @@ curl http://localhost:8080/health
 ```
 
 
-`/metrics` serves Prometheus instrumentation; see the [metrics reference](docs/reference/metrics.md) for every metric, its labels and example queries. `/livez` and `/readyz` are orchestration probes: liveness checks nothing (a dead backend is a load-balancer concern, not a restart concern); readiness consults the event source's own health view — the database and RPC in standalone mode, the SoroTrail indexer in upstream mode. `/api/version` reports the version, commit and build date baked in at compile time. Every response carries an `X-Request-ID` correlation header, echoed in error bodies and log lines.
+`/metrics` serves Prometheus instrumentation; see the [metrics reference](docs/reference/metrics.md) for every metric, its labels and example queries. `/livez` and `/readyz` are orchestration probes: liveness checks nothing (a dead backend is a load-balancer concern, not a restart concern); readiness consults the event source's own health view — the database and RPC in standalone mode, the SoroTrail indexer in upstream mode — and reports each dependency separately with a `fatal` or `degraded` severity. `/api/version` reports the version, commit and build date baked in at compile time. Every response carries an `X-Request-ID` correlation header, echoed in error bodies and log lines.
+
+Set `OTEL_ENABLED=true` to export traces over OTLP/HTTP. Spans cover inbound HTTP requests, outbound RPC and SoroTrail calls, store queries and each ingest poll; W3C `traceparent` continues an inbound trace and is propagated onward. The request ID is attached to the request span, joining traces to log lines.
 
 ## Networks
 
@@ -200,9 +214,17 @@ curl -s localhost:8080/health
   "mode": "rpc",
   "healthy": true,
   "latest_ledger": 3947332,
-  "retention_note": "Standalone mode captures events only while SoroVista is running: …"
+  "retention_note": "Standalone mode captures events only while SoroVista is running: …",
+  "dependencies": [
+    {"name": "postgres", "healthy": true, "severity": "fatal"},
+    {"name": "stellar_rpc", "healthy": true, "severity": "degraded"}
+  ]
 }
 ```
+
+List endpoints and the single-event read return a strong `ETag`. Send it back as
+`If-None-Match` to get `304 Not Modified` with no body when nothing changed;
+filter parameters are part of the tag, so two different filters never collide.
 
 ### `GET /api/contracts`
 
@@ -243,6 +265,7 @@ Query parameters:
 | `tx_hash` | Only events produced by this transaction. |
 | `topic` | A bare word is treated as an event name, so `topic=transfer` means `{"symbol":"transfer"}`. Any JSON value also works, e.g. `topic={"address":"G…"}`. Matches at any topic position. |
 | `from_ledger` / `to_ledger` | Inclusive ledger bounds. |
+| `from_time` / `to_time` | Inclusive RFC 3339 bounds on `ledger_closed_at`, the on-chain close time. A date without a time is rejected. Combine with ledger bounds by intersection. |
 | `cursor` | Opaque; pass back the `next_cursor` from the previous page. |
 | `limit` | 1–200, default 50. |
 
