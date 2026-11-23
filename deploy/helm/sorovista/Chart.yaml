@@ -1,0 +1,22 @@
+apiVersion: v2
+name: sorovista
+description: A contract explorer and event-data UI for the Stellar/Soroban network.
+type: application
+# The chart version tracks the chart's own changes; appVersion is the
+# SoroVista release the default image tag points at.
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.24.0-0"
+home: https://github.com/sorotrail/sorovista
+sources:
+  - https://github.com/sorotrail/sorovista
+keywords:
+  - stellar
+  - soroban
+  - explorer
+  - contract-events
+maintainers:
+  - name: SoroTrail
+    url: https://github.com/sorotrail
+annotations:
+  category: DeveloperTools

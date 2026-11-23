@@ -37,3 +37,32 @@ This is useful for pulling a filtered event set into your own tooling rather tha
 3. Narrow the ledger range if you know roughly when it happened.
 4. Click into the specific event for the full decoded payload and transaction hash.
 5. Follow the transaction hash to a general Stellar explorer if you need the broader transaction context (SoroVista focuses on contract events, not full transaction detail).
+
+**Example:** Querying matching transfer events within a known ledger window via the API:
+
+```bash
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events?type=contract&topic=transfer&from_ledger=500000&to_ledger=510000'
+```
+
+Sample decoded transfer event payload:
+
+```json
+{
+  "events": [
+    {
+      "id": "0016880389704384512-0000000003",
+      "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "ledger": 505120,
+      "type": "contract",
+      "tx_hash": "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "in_successful_call": true,
+      "topics": [
+        {"symbol": "transfer"},
+        {"address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"},
+        {"address": "GDS2XSFBG5KQ3G3UNGSA6EX6E4OS3CSBS3NHFS7AGWZP67KD7T46HQJH"}
+      ],
+      "value": {"i128": "5000000000"}
+    }
+  ]
+}
+```

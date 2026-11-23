@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -22,6 +23,10 @@ var migrationsFS embed.FS
 // Migrate applies all pending migrations. It is safe to call on every start:
 // already-applied migrations are skipped.
 func Migrate(databaseURL string) error {
+	if strings.TrimSpace(databaseURL) == "" {
+		return errors.New("migrate: database URL must not be empty")
+	}
+
 	src, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("loading migrations: %w", err)

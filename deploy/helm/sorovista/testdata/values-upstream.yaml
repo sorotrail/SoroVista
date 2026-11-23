@@ -1,0 +1,18 @@
+# Render fixture for upstream mode: stateless, no database, scales freely.
+sourceMode: sorotrail
+
+replicaCount: 2
+
+httpAddr: ":8080"
+logLevel: info
+corsAllowedOrigins: "https://explorer.example.test"
+sorotrailUrl: "http://sorotrail:8080"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi

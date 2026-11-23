@@ -2,4 +2,5 @@ bin/
 .env
 *.test
 coverage.out
+go-test-output.txt
 .claude/

@@ -21,7 +21,29 @@ SoroVista validates configuration at startup: if `SOURCE_MODE=rpc` but `DATABASE
 
 See [Operating modes](../concepts/operating-modes.md) for the full comparison. Short version: standalone is simplest to start with and needs nothing else running; upstream gives you SoroTrail's deeper history and avoids running two separate ingestion loops if you already run SoroTrail.
 
+**Example:** set the mode in your `.env`:
+
+```bash
+# Standalone mode (polls Stellar RPC and stores events in Postgres)
+SOURCE_MODE=rpc
+DATABASE_URL=postgres://sorovista:sorovista@localhost:5432/sorovista?sslmode=disable
+
+# Or upstream mode (reads from an existing SoroTrail instance)
+# SOURCE_MODE=sorotrail
+# SOROTRAIL_URL=http://localhost:8080
+```
+
 ## Choosing an RPC endpoint (standalone mode)
 
 - **Testnet**: the public endpoint works out of the box, rate-limited to roughly 10 requests/second — fine for exploration.
 - **Mainnet**: use a dedicated RPC provider URL for reliability.
+
+**Example:** configure an RPC endpoint:
+
+```bash
+# Testnet (public endpoint, default)
+RPC_URL=https://soroban-testnet.stellar.org
+
+# Mainnet (dedicated provider endpoint recommended)
+RPC_URL=https://soroban-mainnet.stellar.org
+```

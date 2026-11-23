@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Build
         run: go build ./...
       - name: Vet
@@ -52,10 +55,57 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Test (with Postgres integration tests)
-        run: go test ./...
+        # pipefail keeps go test's exit status when its output is tee'd for the
+        # coverage report below.
+        run: |
+          set -o pipefail
+          go test -coverprofile=coverage.out ./... | tee go-test-output.txt
         env:
           TEST_DATABASE_URL: postgres://sorovista:sorovista@localhost:5432/sorovista?sslmode=disable
+
+      # Coverage is reported from this job rather than the build job because
+      # only here do the internal/store integration tests run; a figure from
+      # the no-database job would understate the store by about 60 points and
+      # read as a regression on every pull request. Per-package figures are
+      # included because the total moves slowly and hides uneven packages.
+      # There is deliberately no coverage threshold gate yet: until the
+      # zero-coverage packages are addressed it would either block every pull
+      # request or be set low enough to mean nothing.
+      - name: Report coverage
+        run: |
+          {
+            echo '## Test coverage'
+            echo ''
+            echo 'From the `test-db` job, which sets `TEST_DATABASE_URL` so the'
+            echo '`internal/store` integration tests run instead of skipping.'
+            echo ''
+            echo '### Per package'
+            echo ''
+            echo '```'
+            # With -coverprofile, go test also lists packages that have no
+            # tests (cmd/sorovista and internal/source today) without an "ok"
+            # prefix, so both line shapes are normalised here.
+            awk '/coverage: [0-9.]+% of statements/ {
+                   line = $0
+                   sub(/^ok[ \t]+/, "", line)
+                   sub(/^[ \t]+/, "", line)
+                   sub(/^github\.com\/sorotrail\/sorovista\/?/, "", line)
+                   sub(/[ \t]+[0-9.]+s[ \t]+coverage: /, " ", line)
+                   sub(/[ \t]+coverage: /, " ", line)
+                   print line
+                 }' go-test-output.txt
+            echo '```'
+            echo ''
+            echo '### Total'
+            echo ''
+            echo '```'
+            go tool cover -func=coverage.out | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   fuzz:
     runs-on: ubuntu-latest
@@ -66,10 +116,36 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - name: Fuzz golden deserializer
         run: go test -fuzz=FuzzGoldenDeserializer -fuzztime=10s ./pkg/fuzz
       - name: Fuzz template interpolation
         run: go test -fuzz=FuzzInterpolate -fuzztime=10s ./pkg/fuzz
+
+  # Renders and lints the Helm chart. Helm must be installed for real: the
+  # render tests skip themselves when the binary is absent, and a skipped test
+  # looks the same as a passing one in CI output.
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.16.3
+      - name: Confirm Helm is installed
+        run: helm version
+      - name: Lint chart
+        run: helm lint deploy/helm/sorovista
+      - name: Render chart (golden files and config coverage)
+        run: go test ./deploy/helm/sorovista/test -v
 
   lint:
     runs-on: ubuntu-latest
@@ -80,6 +156,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+          # Follow go.mod's minor release but take the latest patch, so
+          # security fixes land without another PR.
+          check-latest: true
       - uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.12.2

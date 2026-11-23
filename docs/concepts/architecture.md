@@ -45,17 +45,61 @@ A contract explorer's whole value is what it can show you — and what it can sh
 
 SoroVista never writes to a contract, never holds keys, and (beyond its own optional Postgres cache in standalone mode) never mutates anything. Its entire job is reading and presenting — which keeps its security surface small and its hosting requirements light.
 
+Every request is a plain `GET` with no credentials:
+
+```bash
+curl -s http://localhost:8080/api/events/0016880389704384512-0000000003
+```
+
+```json
+{
+  "id": "0016880389704384512-0000000003",
+  "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "type": "contract",
+  "topics": [
+    {"symbol": "transfer"},
+    {"address": "GDS2XSFBG5KQ3G3UNGSA6EX6E4OS3CSBS3NHFS7AGWZP67KD7T46HQJH"}
+  ],
+  "value": {"i128": "1000"}
+}
+```
+
+There is no write route to call — anything other than `GET` on these paths returns `405 Method Not Allowed`, so there is no key or token to leak.
+
 ## Observability (`internal/metrics`, `internal/reqid`, `internal/buildinfo`)
 
-- `/metrics` — Prometheus: HTTP request duration by route pattern; in
-  standalone mode also poll outcomes/duration, ingest lag behind the tip,
-  seconds since last poll, and events ingested.
+- `/metrics` — Prometheus instrumentation; the [metrics reference](../reference/metrics.md)
+  lists every metric, its labels and example queries.
 - `/livez`, `/readyz` — liveness checks nothing (restart loops otherwise);
   readiness consults the event source's `Status`, so it means the same
   thing regardless of backend.
 - `/api/version` — version, commit and build date via `-ldflags`.
 - Every request carries an `X-Request-ID`; error bodies and log lines echo
   it, so a reported error maps to one request in the logs.
+
+```bash
+# Build identity baked in at compile time
+curl -s http://localhost:8080/api/version
+```
+
+```json
+{"version":"v1.2.3","commit":"a1b2c3d","build_date":"2026-11-20T10:00:00Z"}
+```
+
+```bash
+# Readiness (200 when the backend is reachable, 503 when it is not)
+curl -s http://localhost:8080/readyz
+```
+
+```json
+{"status":true,"mode":"rpc","latest_ledger":3947332}
+```
+
+```bash
+# The correlation ID is on the response and echoed in the error body
+curl -si http://localhost:8080/api/events/does-not-exist | grep -i x-request-id
+# X-Request-Id: 4b1d0e2f9a7c3e51
+```
 
 Standalone mode verifies the RPC's network passphrase against the
 configured one at startup and refuses to start on mismatch — see
