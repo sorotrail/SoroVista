@@ -43,6 +43,10 @@ func (s *Server) handleListContracts(w http.ResponseWriter, r *http.Request) {
 
 	page, err := s.src.ListContracts(r.Context(), q)
 	if err != nil {
+		if errors.Is(err, source.ErrInvalidCursor) {
+			writeError(w, r, http.StatusBadRequest, err)
+			return
+		}
 		s.fail(w, r, "listing contracts", err)
 		return
 	}

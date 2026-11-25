@@ -4,6 +4,7 @@
 <p class="muted">Every contract this instance has events for, most recently active first.</p>
 
 <form class="filters" action="/contracts" method="get">
+  <input type="hidden" name="limit" value="{{$d.Limit}}">
   <div>
     <label for="search">Filter by contract ID</label>
     <input id="search" type="text" name="search" value="{{$d.Search}}"
@@ -12,6 +13,10 @@
   <button type="submit">Search</button>
   {{if $d.Search}}<a href="/contracts">clear</a>{{end}}
 </form>
+
+{{if $d.StaleCursor}}
+<p class="muted" role="status">That page link is invalid or has expired. Showing the first page instead.</p>
+{{end}}
 
 {{if $d.Contracts}}
 <div class="scroll">
@@ -39,7 +44,10 @@
   </table>
 </div>
 
-{{if $d.NextURL}}<p><a href="{{$d.NextURL}}">Next page →</a></p>{{end}}
+{{if $d.NextURL}}
+<p class="muted">More contracts are available.</p>
+<p><a href="{{$d.NextURL}}" rel="next">Next page →</a></p>
+{{end}}
 
 {{else}}
 <div class="empty">
