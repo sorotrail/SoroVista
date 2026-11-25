@@ -2,6 +2,7 @@ package source
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -28,6 +29,45 @@ func TestNormalizeLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, NormalizeLimit(tt.limit))
+		})
+	}
+}
+
+func TestFormatBucketInterval(t *testing.T) {
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		// Zero and negative durations return "0s"
+		{"zero duration returns 0s", 0, "0s"},
+		{"negative duration returns 0s", -10 * time.Minute, "0s"},
+
+		// Whole hours
+		{"one hour", time.Hour, "1h"},
+		{"multiple hours", 6 * time.Hour, "6h"},
+		{"24 hours", 24 * time.Hour, "24h"},
+
+		// Whole minutes
+		{"one minute", time.Minute, "1m"},
+		{"15 minutes", 15 * time.Minute, "15m"},
+		{"45 minutes", 45 * time.Minute, "45m"},
+
+		// Whole seconds
+		{"one second", time.Second, "1s"},
+		{"30 seconds", 30 * time.Second, "30s"},
+		{"45 seconds", 45 * time.Second, "45s"},
+
+		// Fallback / mixed duration (default branch)
+		{"fractional seconds", 1500 * time.Millisecond, "1.5s"},
+		{"whole seconds greater than 60", 90 * time.Second, "90s"},
+		{"sub-second milliseconds", 500 * time.Millisecond, "500ms"},
+		{"mixed minutes, seconds and millis", 90*time.Second + 500*time.Millisecond, "1m30.5s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, FormatBucketInterval(tt.d))
 		})
 	}
 }
