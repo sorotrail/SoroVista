@@ -61,4 +61,32 @@ Switching modes changes where data comes from going forward — it doesn't migra
 | Cursors portable across modes | No (opaque, backend-specific) | No (opaque, backend-specific) |
 | Live SSE stream (`/api/events/stream`) | Supported | Returns `501 Not Implemented` (poll `/api/events` with `cursor` instead) |
 | Simplest to start | ✅ | Needs SoroTrail already running |
-| Best for | Quick exploration, self-contained deployments | Deep history alongside an existing SoroTrail indexer |
+| Best for | Quick exploration, standalone deployments | Serious/production use alongside SoroTrail |
+| Paging cost per page | Low (single SQL query) | 2–4 upstream requests; grows with sparsity |
+| Contract listings | Exact (from SQL index) | Approximate (bounded scan of recent events) |
+| Stats accuracy | Exact (`approximate: false`) | `approximate: true` for type breakdown; totals exact |
+| Zero `first_ledger`/`last_ledger` | Unknown = 0 (DB empty) | Unknown = 0 (limited SoroTrail history) |
+
+**Paging advice:** In upstream mode, specify `from_ledger` / `to_ledger` when possible to
+keep the scan window narrow and the request count low. Narrow filters without ledger bounds
+will scan many windows.
+
+**Stats note:** The `approximate` flag on `/api/stats` is `false` in standalone mode
+(where everything is counted in SQL) and `true` in upstream mode (where the type breakdown
+is from a bounded scan; totals themselves are exact from SoroTrail).
+
+**Cursor portability:** Cursors are opaque and not portable between modes. A cursor from
+standalone mode cannot be used with upstream mode and vice versa. Discard cursors when
+switching modes.
+
+**Invalid cursor:** Returns `400 Bad Request` with an error naming the `cursor` parameter.
+
+**Example:** start SoroVista in either mode:
+
+```bash
+# Standalone (needs Postgres)
+SOURCE_MODE=rpc DATABASE_URL=postgres://sorovista:sorovista@localhost:5432/sorovista?sslmode=disable make run
+
+# Upstream (needs a running SoroTrail instance)
+SOURCE_MODE=sorotrail SOROTRAIL_URL=http://localhost:8080 make run
+```

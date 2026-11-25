@@ -26,7 +26,13 @@
         </td>
         <td class="num">{{.Ledger}}</td>
         {{if not $.ContractID}}
-        <td><a class="mono" href="/contracts/{{.ContractID}}">{{shorten .ContractID 6}}</a></td>
+        <td>
+          <div class="copy-control" data-full="{{.ContractID}}">
+            {{shorten .ContractID 6}}
+            <button class="copy-btn mono tiny" title="Copy full contract ID" aria-label="Copy contract ID">⋮</button>
+          </div>
+          <a class="mono" href="/contracts/{{.ContractID}}">{{shorten .ContractID 6}}</a>
+        </td>
         {{end}}
         <td>
           <div class="topics">
@@ -36,6 +42,12 @@
         <td class="mono">{{summary (render .Value) 48}}</td>
         <td><span class="pill">{{.Type}}</span></td>
         <td><a href="/events/{{.ID}}">details</a></td>
+        <td>
+          <div class="copy-control" data-full="{{.ID}}">
+            {{shorten .ID 10}}
+            <button class="copy-btn mono tiny" title="Copy full event ID" aria-label="Copy event ID">⋮</button>
+          </div>
+        </td>
       </tr>
       {{end}}
     </tbody>
