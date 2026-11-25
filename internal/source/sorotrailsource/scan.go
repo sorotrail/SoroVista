@@ -169,15 +169,15 @@ func encodeCursor(beforeID string, resumeLedger int64) string {
 func decodeCursor(cursor string) (beforeID string, resumeLedger int64, err error) {
 	raw, decErr := base64.RawURLEncoding.DecodeString(cursor)
 	if decErr != nil {
-		return "", 0, fmt.Errorf("invalid cursor")
+		return "", 0, source.ErrInvalidCursor
 	}
 	id, ledgerStr, ok := strings.Cut(string(raw), "|")
 	if !ok {
-		return "", 0, fmt.Errorf("invalid cursor")
+		return "", 0, source.ErrInvalidCursor
 	}
 	var ledger int64
 	if _, scanErr := fmt.Sscanf(ledgerStr, "%d", &ledger); scanErr != nil {
-		return "", 0, fmt.Errorf("invalid cursor")
+		return "", 0, source.ErrInvalidCursor
 	}
 	return id, ledger, nil
 }

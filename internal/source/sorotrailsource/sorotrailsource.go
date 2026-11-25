@@ -154,10 +154,14 @@ func (s *Source) ListContracts(ctx context.Context, q source.ContractQuery) (sou
 		if err != nil {
 			return source.ContractPage{}, err
 		}
-		start = int(offset)
-		if start > len(filtered) {
-			start = len(filtered)
+		// A cursor at or past the end cannot have come from this cached list,
+		// which means the list shifted underneath it. Treat it as stale so the
+		// caller can fall back to the first page instead of rendering an empty
+		// list as if the contracts had disappeared.
+		if offset <= 0 || offset >= int64(len(filtered)) {
+			return source.ContractPage{}, source.ErrInvalidCursor
 		}
+		start = int(offset)
 	}
 
 	end := min(start+limit, len(filtered))
