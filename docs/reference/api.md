@@ -32,7 +32,17 @@ Overview counters: total contracts seen, total events, `first_ledger`, `last_led
 - **`first_ledger` and `last_ledger` (`0` means unknown):**
   - A value of `0` means the bound is **unknown** (or no events have been observed yet), not ledger zero. Upstream mode reports `first_ledger: 0` when the indexer has no events or when the range cannot be determined from the bounded scan.
 
+```bash
+curl 'http://localhost:8080/api/stats'
+```
+
 ## Contracts
+
+Find contracts whose IDs contain a substring:
+
+```bash
+curl 'http://localhost:8080/api/contracts?search=CDLZ&limit=1'
+```
 
 ### `GET /api/contracts`
 List every known contract, newest-activity-first (`last_ledger` descending, then contract `id` ascending).
@@ -51,6 +61,11 @@ Summary for one contract: `contract_id`, `total_events`, `first_ledger`, `last_l
 
 - **`approximate` (`bool`):** `false` in standalone mode (exact SQL count). In upstream mode, SoroVista scans up to `5,000` events for `{id}` backwards from the indexer tip: if that scan reaches the beginning of history, `approximate` is `false` (every event was counted); if the scan hits its budget before exhausting history, `approximate` is `true`.
 - **`first_ledger` and `last_ledger` (`0` means unknown):** Both are `0` when no events are known for the contract within the visible/scanned window.
+
+```bash
+CONTRACT_ID='<CONTRACT_ID>'
+curl "http://localhost:8080/api/contracts/${CONTRACT_ID}"
+```
 
 ## Events
 
