@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -101,4 +103,25 @@ func VerifyPassphrase(configured, reported string) error {
 			label(configured), label(reported))
 	}
 	return nil
+}
+
+// ErrNetworkUnverifiable marks a startup network check where the endpoint
+// could not be asked for its passphrase. Startup proceeds — the poller will
+// surface the outage — but callers log the error as a warning: an explorer
+// quietly missing chain activity is the failure this check exists to catch.
+var ErrNetworkUnverifiable = errors.New("network passphrase unverifiable")
+
+// StartupNetworkCheck performs the startup network check: it asks the
+// connected RPC node for its passphrase and compares it with the configured
+// one. A mismatch is fatal — proceeding would make the explorer quietly show
+// the wrong chain's activity as if the watched contracts simply had none.
+// An endpoint that cannot be queried returns an error wrapping
+// ErrNetworkUnverifiable: the decision is deliberately non-fatal, and the
+// caller logs it as a warning.
+func StartupNetworkCheck(ctx context.Context, client *rpc.HTTPClient, configuredPassphrase string) error {
+	net, err := client.GetNetwork(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrNetworkUnverifiable, err)
+	}
+	return VerifyPassphrase(configuredPassphrase, net.Passphrase)
 }

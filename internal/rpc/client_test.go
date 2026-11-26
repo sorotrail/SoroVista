@@ -255,6 +255,19 @@ func TestGetNetwork(t *testing.T) {
 	}
 }
 
+func TestGetNetworkRejectsMalformedBody(t *testing.T) {
+	// A malformed body must surface as an error, not a zero-value Network
+	// with an empty passphrase that reads as success.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("this is not json"))
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := NewHTTPClient(srv.URL, srv.Client()).GetNetwork(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decoding getNetwork response")
+}
+
 func TestCallRejectsNonOKStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream is down", http.StatusBadGateway)

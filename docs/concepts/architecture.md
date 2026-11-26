@@ -41,6 +41,37 @@ Everything above this interface — decoding, the API, the web UI — is written
 
 A contract explorer's whole value is what it can show you — and what it can show depends entirely on how much history is behind it. Standalone mode is simplest (nothing else to run) but only sees events since it started, bounded by the RPC's short retention. Upstream mode trades that simplicity for depth: if a SoroTrail instance has been running for months, SoroVista reading from it can show months of history on day one.
 
+**Example:** switching modes is a single environment variable — no code changes, no recompile.
+
+```bash
+# Standalone mode: SoroVista polls Stellar RPC and stores events itself.
+# Start here when you have no existing SoroTrail instance.
+SOURCE_MODE=rpc
+RPC_URL=https://soroban-testnet.stellar.org
+DATABASE_URL=postgres://sorovista:sorovista@localhost:5432/sorovista?sslmode=disable
+```
+
+```bash
+# Upstream mode: SoroVista reads from a running SoroTrail instance.
+# Start here when SoroTrail already has months of indexed history.
+SOURCE_MODE=sorotrail
+SOROTRAIL_URL=http://sorotrail.internal:8080
+```
+
+The `/readyz` endpoint reports the active mode, so you can confirm which one is running:
+
+```bash
+curl -s http://localhost:8080/readyz
+```
+
+```json
+{"status":true,"mode":"rpc","latest_ledger":3947332}
+```
+
+```json
+{"status":true,"mode":"sorotrail","latest_ledger":3947332}
+```
+
 ## Read-only by design
 
 SoroVista never writes to a contract, never holds keys, and (beyond its own optional Postgres cache in standalone mode) never mutates anything. Its entire job is reading and presenting — which keeps its security surface small and its hosting requirements light.

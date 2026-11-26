@@ -100,7 +100,30 @@ curl 'http://localhost:8080/api/events/<event-id>'
 
 Standalone mode only sees what it's ingested since it started, because Stellar RPC retains events briefly. If you run a [SoroTrail](https://github.com/sorotrail/SoroTrail) instance, point SoroVista at it instead for a much deeper archive — see [Operating modes](../concepts/operating-modes.md).
 
+Set these in `.env`, then restart the stack:
+
+```bash
+# .env
+SOURCE_MODE=sorotrail
+SOROTRAIL_URL=https://your-sorotrail-instance.example.com
+```
+
+```bash
+docker compose up -d
+curl http://localhost:8080/health
+```
+
+The health response reports the active source, so you can confirm it switched to `sorotrail`.
+
 ## Next steps
+
+Try the API from the command line to see what's available before diving into the guides:
+
+```bash
+# Overview counters, then the five newest events as JSON.
+curl 'http://localhost:8080/api/stats'
+curl 'http://localhost:8080/api/events?limit=5'
+```
 
 - [Operating modes](../concepts/operating-modes.md) — standalone vs upstream
 - [Searching and filtering events](../guides/searching-events.md)

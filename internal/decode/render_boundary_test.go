@@ -32,7 +32,7 @@ func TestRenderDepthBoundaryTableDriven(t *testing.T) {
 	// Table-driven test straddling the boundary.
 	// Depth 5: renders fully. Depth 6: truncates with ellipsis.
 	tests := []struct {
-		depth int
+		depth        int
 		wantEllipsis bool
 	}{
 		{5, false},
@@ -59,9 +59,9 @@ func TestRenderDepthBoundaryTableDriven(t *testing.T) {
 
 func depthLabel(d int) string {
 	if d < 10 {
-		return "d0" + string(rune('0' + d))
+		return "d0" + string(rune('0'+d))
 	}
-	return "d" + string(rune('0' + d/10)) + string(rune('0' + d%10))
+	return "d" + string(rune('0'+d/10)) + string(rune('0'+d%10))
 }
 
 func buildNested(depth int) string {
