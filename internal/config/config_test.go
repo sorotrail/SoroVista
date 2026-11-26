@@ -14,6 +14,14 @@ import (
 // validContract is a well-formed contract ID used across the tests.
 const validContract = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 
+// configPath is the default config file path used by the tests.
+var configPath = "/tmp/sorovista_config_test.yaml"
+
+// TestMain removes the test config file after all tests complete.
+func TestMain(m *testing.T) {
+	defer os.Remove(configPath)
+}
+
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -103,7 +111,7 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
-			name: "a malformed watched contract is rejected",
+			name:    "a malformed watched contract is rejected",
 			env: map[string]string{
 				"DATABASE_URL":      "postgres://localhost/sorovista",
 				"WATCHED_CONTRACTS": "not-a-contract",

@@ -172,7 +172,84 @@ Both endpoints return the same `BucketSeries` shape. Each bucket is the number o
 
 ## Pagination
 
-List endpoints (`GET /api/contracts`, `GET /api/events`, and `GET /api/contracts/{id}/events`) return up to `limit` items (`1..200`, default `50`) ordered newest-first alongside an optional `next_cursor` string. Pass `next_cursor` back as the `cursor` query parameter to fetch the following page; an absent or empty `next_cursor` indicates that no older results remain.
+List responses include `next_cursor`; pass it back as `cursor` for the next page. A null
+`next_cursor` means you've reached the end. Treat the cursor as **opaque**:
+
+- **Not portable between modes.** A cursor produced by standalone mode (Postgres-backed)
+  cannot be used with upstream mode (SoroTrail API), and vice versa. Switching modes
+  requires discarding any stored cursor.
+- **Not guaranteed stable across versions.** The cursor's internal encoding may change
+  between releases without warning. Clients must not attempt to parse or serialize it.
+- **Cost grows with sparsity.** In upstream mode, a filter matching few events scans many
+  ledger windows to fill one page. A page view normally costs two to four upstream requests.
+  Narrowing with `from_ledger` / `to_ledger` reduces the window and the request count.
+
+**Practical advice:** In upstream mode, specify ledger bounds (`from_ledger` / `to_ledger`)
+when you can, rather than relying on a filter alone. If you must page broadly, cache the
+cursor only within a single mode session.
+
+### What happens with an invalid or stale cursor?
+
+If the cursor is unrecognizable (e.g. base64-decoded form is malformed), the API returns
+`400 Bad Request` with an error naming the `cursor` parameter. If the cursor was produced
+by a different mode, the API returns `400 Bad Request` as well — the cursor from one mode
+is meaningless to the other.
+
+## Stats
+
+**Example:** Check system health and ingest statistics:
+
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/api/stats
+```
+
+Sample response payload for `GET /api/stats`:
+
+```json
+{
+  "total_events": 14200,
+  "contract_count": 85,
+  "first_ledger": 500000,
+  "last_ledger": 512000,
+  "approximate": false
+}
+```
+
+### `approximate` flag
+
+- **Standalone mode (`SOURCE_MODE=rpc`):** `approximate` is always `false`. Totals and
+  type breakdown are counted exactly in SQL. The UI does not label any figures as
+  approximate.
+- **Upstream mode (`SOURCE_MODE=sorotrail`):** `approximate` is `true` when the type
+  breakdown is derived from a bounded recent-event scan (not from a full index). The
+  *totals* (`total_events`, `contract_count`) still come straight from SoroTrail and are
+  exact. Only the per-type breakdown is approximate.
+
+The UI must surface this distinction: wherever `approximate` appears, label the figures
+as approximate so visitors understand they are not authoritative.
+
+### Zero-means-unknown convention
+
+`first_ledger` and `last_ledger` report zero when the range is unknown. In standalone
+mode this only happens if the database is empty; in upstream mode it can happen when
+the SoroTrail indexer has very little history. A `0` value does not mean ledger 0 —
+it means the range is not available.
+
+## Contracts
+
+### `GET /api/contracts`
+
+List every known contract, newest-activity-first.
+
+**Query parameters:** `search` (substring of a contract ID, case-insensitive),
+`cursor`, `limit` (1–200, default 50).
+
+**Important in upstream mode:** There is no `/contracts` endpoint on SoroTrail. The
+contracts list is therefore derived from a bounded scan of recent events, cached briefly,
+and reported as approximate. Totals on `/api/stats` still come straight from SoroTrail
+and are exact. The `approximate` flag on `/api/stats` signals when the contract list
+is approximate.
 
 ### Cursor contract
 

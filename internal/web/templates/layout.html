@@ -60,6 +60,20 @@
   </style>
 </head>
 <body>
+<!-- Keyboard shortcuts overlay, hidden by default -->
+<div id="shortcuts-overlay" class="overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="display:none;">
+  <div class="overlay-content">
+    <h2>Keyboard shortcuts</h2>
+    <ul>
+      <li><kbd>/</kbd> — Focus search</li>
+      <li><kbd>Escape</kbd> — Blur search and clear focus</li>
+      <li><kbd>?</kbd> — Show/hide this overlay</li>
+    </ul>
+    <p>Focus remains on the page; use <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> to navigate.</p>
+  </div>
+</div>
+
+<body>
 <header>
   <span class="brand">🔭 SoroVista</span>
   <a href="/" {{if eq .Active "overview"}}class="active"{{end}}>Overview</a>
@@ -75,6 +89,73 @@
   {{template "status-banner" .Status}}
   {{template "content" .}}
 </main>
+
+<script>
+(function() {
+  const overlay = document.getElementById('shortcuts-overlay');
+  const form = document.querySelector('header form');
+  const input = document.getElementById('q');
+
+  // Don't fire shortcuts when the active element is an input, textarea, or select
+  function shouldIgnoreKey(event) {
+    const target = event.target;
+    return target.tagName === 'INPUT' ||
+           target.tagName === 'TEXTAREA' ||
+           target.tagName === 'SELECT' ||
+           target.isContentEditable;
+  }
+
+  // Show the overlay
+  function showOverlay() {
+    if (overlay.style.display === 'none' || overlay.style.display === '') {
+      overlay.style.display = 'block';
+    } else {
+      overlay.style.display = 'none';
+    }
+  }
+
+  // Handle keydown globally
+  document.addEventListener('keydown', function(event) {
+    // Don't fire if user is typing in a form field
+    if (shouldIgnoreKey(event)) return;
+
+    // / focuses the search box
+    if (event.key === '/' && !event.target.matches('input, textarea, select')) {
+      event.preventDefault();
+      form.style.display = 'block';
+      input.focus();
+      // Move focus to the end of the input
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+
+    // Escape blurs the search box and clears it
+    if (event.key === 'Escape') {
+      if (document.activeElement === input) {
+        input.blur();
+        input.value = '';
+        form.style.display = 'none';
+      }
+    }
+
+    // ? shows/hides the shortcuts overlay
+    if (event.key === '?') {
+      event.preventDefault();
+      showOverlay();
+    }
+  });
+
+  // Clicking the search button also hides the overlay
+  const searchButton = form.querySelector('button');
+  if (searchButton) {
+    searchButton.addEventListener('click', function() {
+      if (document.activeElement === input) {
+        // User clicked search, blur the input
+        input.blur();
+      }
+    });
+  }
+})();
+</script>
 </body>
 </html>{{end}}
 
