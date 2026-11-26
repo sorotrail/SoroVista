@@ -83,11 +83,19 @@ Events across all contracts (`GET /api/events`) or for a single contract (`GET /
 | `limit` / `cursor` | Pagination (`limit` in `1..200`, default `50`) |
 
 ```bash
-curl 'http://localhost:8080/api/contracts/CC.../events?type=contract&limit=50'
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/events?type=contract&limit=50'
 ```
+
+`{id}` is a Soroban contract strkey (a `C...` address); replace the example above with your contract. The response has the same `events` / `next_cursor` shape as `GET /api/events`.
 
 ### `GET /api/events/{id}`
 Fetch a single event by its unique id (TOID), fully decoded.
+
+```bash
+curl 'http://localhost:8080/api/events/0016880389704384512-0000000003'
+```
+
+`{id}` is the event's TOID, as returned in an event's `id` field. A SEP-41 token event also carries an extra `token` object with its decoded reading; unknown ids return `404`.
 
 ### `GET /api/events/stream`
 Stream newly ingested events in real time over Server-Sent Events (`text/event-stream`).
@@ -96,6 +104,15 @@ Stream newly ingested events in real time over Server-Sent Events (`text/event-s
 
 ```bash
 curl -N 'http://localhost:8080/api/events/stream?contract_id=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC&type=contract'
+```
+
+In a browser, consume the same stream with `EventSource`. Frames are named `event`, so listen for that name rather than `message`:
+
+```js
+const stream = new EventSource('http://localhost:8080/api/events/stream?type=contract');
+stream.addEventListener('event', (e) => {
+  console.log(e.lastEventId, JSON.parse(e.data)); // TOID, event JSON
+});
 ```
 
 **Frame format & heartbeats:**
@@ -129,7 +146,28 @@ Aggregate event counts into contiguous half-open `[start, end)` time buckets ove
 | `topic` | Optional decoded topic filter (bare symbol or JSON object) |
 
 ```bash
-curl 'http://localhost:8080/api/events/buckets?from=2024-01-01T00:00:00Z&to=2024-01-01T06:00:00Z&interval=1h&type=contract'
+# Every event, optionally narrowed with contract_id
+curl 'http://localhost:8080/api/events/buckets?from=2026-08-02T00:00:00Z&to=2026-08-02T03:00:00Z&interval=1h&type=contract'
+
+# One contract's events; the contract ID comes from the path
+curl 'http://localhost:8080/api/contracts/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/buckets?from=2026-08-02T00:00:00Z&to=2026-08-02T03:00:00Z&interval=1h'
+```
+
+Both endpoints return the same `BucketSeries` shape. Each bucket is the number of matching events whose `ledger_closed_at` fell in that half-open slice, so the counts sum to `total_events` across the requested range. Quiet hours are present with `count: 0`, and `approximate` is `false` when the counts come from an exact standalone-mode aggregate.
+
+```json
+{
+  "interval": "1h",
+  "from": "2026-08-02T00:00:00Z",
+  "to": "2026-08-02T03:00:00Z",
+  "total_events": 42,
+  "buckets": [
+    { "start": "2026-08-02T00:00:00Z", "end": "2026-08-02T01:00:00Z", "count": 17 },
+    { "start": "2026-08-02T01:00:00Z", "end": "2026-08-02T02:00:00Z", "count": 0 },
+    { "start": "2026-08-02T02:00:00Z", "end": "2026-08-02T03:00:00Z", "count": 25 }
+  ],
+  "approximate": false
+}
 ```
 
 ## Pagination

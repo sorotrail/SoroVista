@@ -22,6 +22,27 @@ This zero-padded format is load-bearing across the entire codebase: **lexicograp
 - In **standalone mode**, descending event pagination (`ORDER BY id DESC` with `id < $cursor`) uses the primary-key index directly without parsing the TOID components.
 - In **upstream mode**, the backwards ledger-window scanner (`internal/source/sorotrailsource/scan.go`) compares event IDs lexicographically (`e.ID < beforeID` and descending sort by `ID`) to deduplicate overlapping windows and resume pagination strictly below the last event of the previous page.
 
+A standalone instance is configured with `SOURCE_MODE=rpc` and a Postgres `DATABASE_URL`; the poller owns the two tables above. Point `psql` at that database to see exactly what it has accumulated:
+
+```bash
+psql "$DATABASE_URL" -c 'SELECT last_ledger FROM ingest_state WHERE id = 1;'
+psql "$DATABASE_URL" -c 'SELECT id, contract_id, ledger, type, ledger_closed_at FROM events ORDER BY id DESC LIMIT 3;'
+```
+
+The first query returns the poller's resume point; after a restart it continues from here instead of re-reading from the retention horizon. The second query reads newest-first, the same ordering the API and UI use:
+
+```text
+ last_ledger
+-------------
+     3930272
+
+              id               |              contract_id               | ledger  |   type   |    ledger_closed_at
+-------------------------------+----------------------------------------+---------+----------+------------------------
+ 0016880389704384512-0000000003 | CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF4… | 3930272 | contract | 2026-08-02 11:43:57+00
+ 0016880389704384512-0000000002 | CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF4… | 3930272 | contract | 2026-08-02 11:43:57+00
+ 0016880389704384512-0000000001 | CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF4… | 3930271 | contract | 2026-08-02 11:43:52+00
+```
+
 ## Upstream mode
 
 SoroVista holds **no local event data** in upstream mode. Every contract and event query is served live from the connected SoroTrail instance's API. There is no local database requirement, no migrations to run, and no local copy to keep in sync — SoroVista is a thin, stateless window onto SoroTrail's own store.
