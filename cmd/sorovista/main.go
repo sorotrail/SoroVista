@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -42,6 +43,14 @@ import (
 const shutdownTimeout = 15 * time.Second
 
 func main() {
+	// Handle the "validate" subcommand before anything else.
+	if len(os.Args) > 1 && os.Args[1] == "validate" {
+		if err := runValidate(); err != nil {
+			fmt.Fprintf(os.Stderr, "sorovista validate: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		// The logger may not exist yet if configuration failed, so report the
 		// startup failure on stderr unconditionally.
@@ -192,7 +201,7 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 		}
 		log.Info("migrations applied")
 
-		pg, err := store.NewPostgresWithTracer(ctx, cfg.DatabaseURL, tracer)
+		pg, err := store.NewPostgres(ctx, cfg.DatabaseURL, &cfg)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -216,13 +225,20 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 		})
 
 		ingester := ingest.New(client, pg, decode.NewXDRDecoder(), ingest.Options{
-			WatchedContracts: cfg.WatchedContracts,
-			PollInterval:     cfg.PollInterval,
-			StartLedger:      cfg.StartLedger,
-			RetentionLedgers: cfg.RetentionLedgers,
+			WatchedContracts:    cfg.WatchedContracts,
+			PollInterval:        cfg.PollInterval,
+			StartLedger:         cfg.StartLedger,
+			RetentionLedgers:    cfg.RetentionLedgers,
+			PerContractResumers: ingest.ContractIngestSaver(pg),
 		}, log)
 
 		ingester.WithMetrics(m).WithTracer(tracer).WithPublisher(broker)
+
+		// Seed per-contract cursors from the global position so that upgrades
+		// do not re-read the retention window.
+		if err := ingest.SeedContractCursors(ctx, pg, cfg.WatchedContracts); err != nil {
+			log.Warn("failed to seed per-contract cursors from global state", "error", err)
+		}
 
 		var startSweep func(context.Context) error
 		if cfg.EventRetention > 0 {
@@ -235,6 +251,90 @@ func buildSource(ctx context.Context, cfg config.Config, log *slog.Logger, m *me
 	default:
 		return nil, nil, nil, nil, fmt.Errorf("unsupported SOURCE_MODE %q", cfg.SourceMode)
 	}
+}
+
+func runValidate() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	// Collect all validation errors (not just the first).
+	var errors []string
+
+	// Validate per-mode requirements.
+	switch cfg.SourceMode {
+	case config.ModeRPC:
+		if cfg.DatabaseURL == "" {
+			errors = append(errors, "DATABASE_URL is required when SOURCE_MODE=rpc")
+		}
+		if cfg.RPCURL == "" {
+			errors = append(errors, "RPC_URL is required when SOURCE_MODE=rpc")
+		}
+		// Validate pool settings.
+		if err := cfg.ValidatePoolSettings(); err != nil {
+			errors = append(errors, err.Error())
+		}
+	case config.ModeSoroTrail:
+		if cfg.SoroTrailURL == "" {
+			errors = append(errors, "SOROTRAIL_URL is required when SOURCE_MODE=sorotrail")
+		}
+		if !strings.HasPrefix(cfg.SoroTrailURL, "http://") && !strings.HasPrefix(cfg.SoroTrailURL, "https://") {
+			errors = append(errors, fmt.Sprintf("SOROTRAIL_URL %q must start with http:// or https://", cfg.SoroTrailURL))
+		}
+	default:
+		errors = append(errors, fmt.Sprintf("unknown SOURCE_MODE %q", cfg.SourceMode))
+	}
+
+	// Report every validation error, not just the first.
+	if len(errors) > 0 {
+		return fmt.Errorf("configuration errors:\n  %s", strings.Join(errors, "\n  "))
+	}
+
+	// Redact DATABASE_URL password before printing.
+	redactedDBURL := cfg.DatabaseURL
+	if idx := strings.LastIndex(redactedDBURL, "/"); idx > 0 {
+		// Find the password part in postgres://user:pass@host/db
+		if strings.HasPrefix(redactedDBURL, "postgres://") || strings.HasPrefix(redactedDBURL, "postgresql://") {
+			// Replace password with ****
+			// Format: postgres://user:password@host/db
+			afterAt := strings.Index(redactedDBURL, "@")
+			if afterAt > 0 {
+				// Find the password between // and @
+				afterSlash := strings.Index(redactedDBURL, "//")
+				if afterSlash >= 0 && afterSlash < afterAt {
+					passwordSection := redactedDBURL[afterSlash+2 : afterAt]
+					colonIdx := strings.Index(passwordSection, ":")
+					if colonIdx > 0 && colonIdx < len(passwordSection)-1 {
+						// Replace everything after the colon with ****
+						redactedDBURL = redactedDBURL[:afterSlash+2] + ":***@" + redactedDBURL[afterAt+1:]
+					}
+				}
+			}
+		}
+	}
+
+	// Print the resolved configuration.
+	fmt.Println("mode:", cfg.SourceMode)
+	fmt.Println("network:", cfg.Network.Name)
+	fmt.Println("http_addr", cfg.HTTPAddr)
+	fmt.Println("log_level:", cfg.LogLevel)
+	fmt.Println("database_url", redactedDBURL)
+	fmt.Println("source_mode", cfg.SourceMode)
+	if cfg.SourceMode == config.ModeRPC {
+		fmt.Println("rpc_url", cfg.RPCURL)
+		fmt.Println("pool_max_open_conns", cfg.PoolMaxOpenConns)
+		fmt.Println("pool_max_idle_conns", cfg.PoolMaxIdleConns)
+		fmt.Println("pool_max_conn_lifetime", cfg.PoolMaxConnLifetime)
+		fmt.Println("pool_max_conn_idle_time", cfg.PoolMaxConnIdleTime)
+	}
+	if cfg.SourceMode == config.ModeSoroTrail {
+		fmt.Println("sorotrail_url", cfg.SoroTrailURL)
+	}
+
+	// Optional connectivity check is not implemented in this release.
+
+	return nil
 }
 
 // router mounts the web UI at the root and the JSON API under /api.

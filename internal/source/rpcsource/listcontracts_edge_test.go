@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sorotrail/sorovista/internal/source"
+	"github.com/sorotrail/sorovista/internal/store"
 )
 
 // TestListContractsEdgeCases covers the edges of the read path: a store with
@@ -66,4 +67,12 @@ func TestListContractsEdgeCases(t *testing.T) {
 			assert.Equal(t, tt.query, tt.store.lastContractQuery)
 		})
 	}
+}
+
+func (s *stubStore) GetContractIngestState(context.Context, string) (store.ContractIngestState, error) {
+	return store.ContractIngestState{}, nil
+}
+
+func (s *stubStore) SaveContractIngestState(context.Context, store.ContractIngestState) error {
+	return nil
 }

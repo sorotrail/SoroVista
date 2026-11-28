@@ -192,6 +192,16 @@ func (m *mockStore) PruneEvents(context.Context, time.Time) (int64, error) {
 func (m *mockStore) Ping(context.Context) error { return nil }
 func (m *mockStore) Close()                     {}
 
+// GetContractIngestState implements store.Store — returns empty state so
+// tests that don't set per-contract state get a cold start.
+func (m *mockStore) GetContractIngestState(context.Context, string) (store.ContractIngestState, error) {
+	return store.ContractIngestState{}, nil
+}
+
+func (m *mockStore) SaveContractIngestState(context.Context, store.ContractIngestState) error {
+	return nil
+}
+
 // passthroughDecoder wraps a base64 string as a symbol, so tests can assert
 // which decode path ran without constructing real XDR.
 type passthroughDecoder struct{}
